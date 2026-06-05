@@ -1,0 +1,8 @@
+{
+  "scriptId": "sjtu-course-assistant-plus",
+  "entry": "sjtu-course-assistant-plus.user.js",
+  "releaseBranch": "release/sjtu-course-assistant-plus",
+  "codeSyncUrl": "https://raw.githubusercontent.com/<owner>/<repo>/release/sjtu-course-assistant-plus/scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js",
+  "additionalInfoSyncUrl": "https://raw.githubusercontent.com/<owner>/<repo>/release/sjtu-course-assistant-plus/scripts/sjtu-course-assistant-plus/README.md",
+  "changelog": "CHANGELOG.md"
+}

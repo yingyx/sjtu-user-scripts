@@ -1,0 +1,13 @@
+[
+  {
+    "id": "sjtu-course-assistant-plus",
+    "name": "SJTU Course Assistant Plus",
+    "entry": "scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js",
+    "readme": "scripts/sjtu-course-assistant-plus/README.md",
+    "changelog": "scripts/sjtu-course-assistant-plus/CHANGELOG.md",
+    "releaseBranch": "release/sjtu-course-assistant-plus",
+    "compatibility": {
+      "disallowPrototypeArrayMethods": true
+    }
+  }
+]

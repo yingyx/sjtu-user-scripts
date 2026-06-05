@@ -38,3 +38,9 @@ Use `shared/` only for development notes or source snippets that will be copied 
 ```powershell
 node --check scripts\sjtu-course-assistant-plus\sjtu-course-assistant-plus.user.js
 ```
+
+## Release Workflow
+
+This repository supports multiple independent userscripts. Register each publishable script in `scripts.json`, keep per-script release notes in `scripts/<script-id>/CHANGELOG.md`, and publish through that script's `release/<script-id>` branch.
+
+See `docs/release.md` for the full CI/CD and GreasyFork synchronization workflow.
