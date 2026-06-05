@@ -25,7 +25,7 @@ https://raw.githubusercontent.com/<owner>/<repo>/<branch>/scripts/<script-id>/<s
 For the current script:
 
 ```text
-scripts/sjtu-course-plus/sjtu-course-plus.user.js
+scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js
 ```
 
 ## Structure Policy

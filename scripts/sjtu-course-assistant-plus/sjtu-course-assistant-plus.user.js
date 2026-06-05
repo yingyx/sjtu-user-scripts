@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         交大选课助手+（SJTU Course Assistant Plus）
 // @namespace    https://course.sjtu.plus/
-// @version      0.7.5
+// @version      0.8.0
 // @description  Enhance SJTU course selection with time-conflict filtering and on-demand jCourse + DeepSeek review summaries.
 // @author       Codex
 // @match        https://i.sjtu.edu.cn/xsxk/zzxkyzb_cxZzxkYzbIndex.html?*
@@ -21,7 +21,10 @@
   const JCACHE_KEY = "sjtuCoursePlus.jcourseCache.v2";
   const LCACHE_KEY = "sjtuCoursePlus.llmCache.v2";
   const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 14;
+  const CACHE_MAX_ENTRIES = 250;
   const SCAN_DEBOUNCE_MS = 350;
+  const EXPAND_WAIT_TIMEOUT_MS = 4000;
+  const EXPAND_WAIT_INTERVAL_MS = 150;
   const DEFAULT_DIMENSIONS = [
     { type: "yesno", label: "是否点名", note: "若能判断线上/线下，必须说明线上或线下" },
     { type: "yesno", label: "是否有互动", note: "" },
@@ -31,6 +34,7 @@
     deepseek: {
       label: "DeepSeek",
       endpoint: "https://api.deepseek.com/chat/completions",
+      modelsEndpoint: "https://api.deepseek.com/models",
       defaultModel: "deepseek-v4-flash",
     },
   };
@@ -39,10 +43,12 @@
     scanTimer: 0,
     observer: null,
     selectedSlots: [],
+    selectedCourses: [],
     settings: loadSettings(),
     jcourseCache: loadJson(JCACHE_KEY, {}),
     llmCache: loadJson(LCACHE_KEY, {}),
     activeRequests: new Map(),
+    deepseekModels: [],
     errorCount: 0,
     zeroDomReported: false,
   };
@@ -88,6 +94,7 @@
       enabledProviders: Array.isArray(saved.enabledProviders) && saved.enabledProviders.length ? saved.enabledProviders : ["deepseek"],
       providerKeys: { deepseek: typeof providerKeys.deepseek === "string" ? providerKeys.deepseek : "" },
       providerModels: { deepseek: savedDeepSeekModel },
+      jcourseApiKey: typeof saved.jcourseApiKey === "string" ? saved.jcourseApiKey : "",
       dimensions: normalizeDimensionSettings(saved.dimensions),
     };
   }
@@ -224,8 +231,10 @@
       .jcp-warning { border-color: #faebcc; background: #fff8e5; color: #8a6d3b; }
       .jcp-conflict-tag { border-color: #ebccd1; background: #fff0f0; color: #a94442; }
       .jcp-ok-tag { border-color: #d6e9c6; background: #f6fff0; color: #2b542c; }
+      .jcp-selected-tag { border-color: #bce8f1; background: #eef9ff; color: #245269; }
       .jcp-title-rating {
         margin-left: 8px;
+        margin-right: 8px;
         color: #31708f;
         font-size: 12px;
         font-weight: normal;
@@ -236,6 +245,7 @@
       }
       .jcp-course-conflict > .panel-heading { background: #fff4f4 !important; }
       tr.jcp-row-conflict { background: #fff4f4 !important; }
+      tr.jcp-row-selected { background: #eef9ff !important; }
       .jcp-hidden-conflict { display: none !important; }
       .panel-heading.kc_head {
         position: relative;
@@ -279,14 +289,20 @@
         font-size: 12px;
         line-height: 1.45;
       }
+      .jcp-heading-summary-line .jcp-chip-label {
+        color: #666;
+        margin-right: 2px;
+      }
       .jcp-heading-summary-main {
         min-width: 0;
         flex: 1 1 auto;
+        line-height: 1.7;
       }
       .jcp-heading-summary-extra {
         flex: 0 0 auto;
         max-width: 45%;
         text-align: right;
+        line-height: 1.7;
       }
       .jcp-heading-summary-line .jcp-badge {
         margin-left: 0;
@@ -295,6 +311,12 @@
       .jcp-heading-summary-extra .jcp-badge {
         margin-right: 0;
         margin-left: 6px;
+      }
+      .jcp-heading-summary-line .jcp-summary {
+        border-color: transparent;
+        background: transparent;
+        color: #2b542c;
+        padding: 0;
       }
       .jcp-row-result {
         display: block;
@@ -347,6 +369,23 @@
         font-size: 13px;
       }
       .jcp-panel textarea { min-height: 72px; resize: vertical; }
+      .jcp-model-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .jcp-model-row select {
+        flex: 1 1 auto;
+        min-width: 0;
+        box-sizing: border-box;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        padding: 5px;
+        font-size: 13px;
+      }
+      .jcp-model-row button {
+        flex: 0 0 auto;
+      }
       .jcp-dim-table {
         width: 100%;
         border-collapse: collapse;
@@ -455,7 +494,13 @@
       <label>DeepSeek API Key</label>
       <input type="password" class="jcp-key-deepseek" placeholder="sk-..." value="${escapeAttr(state.settings.providerKeys.deepseek)}">
       <label>DeepSeek Model</label>
-      <input type="text" class="jcp-model-deepseek" value="${escapeAttr(state.settings.providerModels.deepseek)}">
+      <div class="jcp-model-row">
+        <select class="jcp-model-deepseek">${deepSeekModelOptionsHtml(state.settings.providerModels.deepseek)}</select>
+        <button type="button" class="jcp-refresh-models">刷新模型</button>
+      </div>
+      <p class="jcp-muted jcp-model-status">配置 DeepSeek API Key 后可刷新模型列表。</p>
+      <label>jCourse API Key</label>
+      <input type="password" class="jcp-key-jcourse" placeholder="可选；用于 Bearer 认证访问 jCourse API" value="${escapeAttr(state.settings.jcourseApiKey)}">
       <label>总结维度</label>
       <table class="jcp-dim-table">
         <thead>
@@ -476,7 +521,7 @@
         <input type="checkbox" class="jcp-hide-conflicts" ${state.settings.hideConflicts ? "checked" : ""}>
         隐藏与已选课冲突的教学班/课程
       </label>
-      <p class="jcp-muted">脚本不会自动调用 DeepSeek。只有点击每门课旁边的“选课社区评价总结”按钮时，才会请求 jCourse 和 DeepSeek。</p>
+      <p class="jcp-muted">脚本不会自动调用 DeepSeek。只有点击“选课社区”或评价总结按钮时，才会请求 jCourse；只有点击总结按钮且配置 DeepSeek API Key 时才会请求 DeepSeek。</p>
       <div class="jcp-actions">
         <button type="button" class="jcp-clear-cache">清除缓存</button>
         <button type="button" class="jcp-cancel">取消</button>
@@ -487,6 +532,8 @@
     document.body.appendChild(panel);
     mask.addEventListener("click", closeSettingsPanel);
     panel.querySelector(".jcp-cancel").addEventListener("click", closeSettingsPanel);
+    panel.querySelector(".jcp-refresh-models").addEventListener("click", () => refreshDeepSeekModels(panel));
+    panel.querySelector(".jcp-key-deepseek").addEventListener("change", () => refreshDeepSeekModels(panel));
     panel.querySelector(".jcp-add-dim").addEventListener("click", () => addDimensionRow(panel, { type: "yesno", label: "", note: "" }));
     panel.querySelector(".jcp-dim-table").addEventListener("click", (event) => {
       const target = event.target;
@@ -506,6 +553,7 @@
       state.settings.enabledProviders = ["deepseek"];
       state.settings.providerKeys.deepseek = panel.querySelector(".jcp-key-deepseek").value.trim();
       state.settings.providerModels.deepseek = panel.querySelector(".jcp-model-deepseek").value.trim() || PROVIDERS.deepseek.defaultModel;
+      state.settings.jcourseApiKey = panel.querySelector(".jcp-key-jcourse").value.trim();
       state.settings.dimensions = parseDimensionSettingsTable(panel);
       if (!state.settings.dimensions.length) state.settings.dimensions = cloneDefaultDimensions();
       state.settings.hideConflicts = panel.querySelector(".jcp-hide-conflicts").checked;
@@ -515,10 +563,75 @@
       closeSettingsPanel();
       scheduleScan();
     });
+    refreshDeepSeekModels(panel);
   }
 
   function closeSettingsPanel() {
     removeNodes(document.querySelectorAll(".jcp-panel-mask, .jcp-panel"));
+  }
+
+  function deepSeekModelOptionsHtml(selectedModel) {
+    const current = selectedModel || PROVIDERS.deepseek.defaultModel;
+    const models = state.deepseekModels && state.deepseekModels.length ? state.deepseekModels : [current];
+    const normalized = uniqueStrings(compactValues(models.concat([current, PROVIDERS.deepseek.defaultModel])));
+    const options = [];
+    for (let i = 0; i < normalized.length; i += 1) {
+      const model = normalized[i];
+      options.push(`<option value="${escapeAttr(model)}" ${model === current ? "selected" : ""}>${escapeHtml(model)}</option>`);
+    }
+    return options.join("");
+  }
+
+  async function refreshDeepSeekModels(panel) {
+    if (!panel) return;
+    const keyNode = panel.querySelector(".jcp-key-deepseek");
+    const select = panel.querySelector(".jcp-model-deepseek");
+    const status = panel.querySelector(".jcp-model-status");
+    const button = panel.querySelector(".jcp-refresh-models");
+    const key = keyNode ? keyNode.value.trim() : "";
+    if (!select) return;
+    if (!key) {
+      if (status) status.textContent = "配置 DeepSeek API Key 后可刷新模型列表。";
+      return;
+    }
+    if (button) button.disabled = true;
+    if (status) status.textContent = "正在获取 DeepSeek 模型列表...";
+    try {
+      const data = await requestDeepSeekModels(key);
+      const models = normalizeDeepSeekModels(data);
+      if (!models.length) throw new Error("模型列表为空");
+      state.deepseekModels = models;
+      const current = select.value || state.settings.providerModels.deepseek || PROVIDERS.deepseek.defaultModel;
+      select.innerHTML = deepSeekModelOptionsHtml(current);
+      if (models.indexOf(current) >= 0) select.value = current;
+      if (status) status.textContent = `已获取 ${models.length} 个模型。`;
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      if (status) status.textContent = `模型列表获取失败：${message}`;
+      reportError("DeepSeek 模型列表获取失败", message);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  function requestDeepSeekModels(apiKey) {
+    return requestJson(PROVIDERS.deepseek.modelsEndpoint, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  function normalizeDeepSeekModels(data) {
+    const out = [];
+    const items = data && Array.isArray(data.data) ? data.data : [];
+    for (let i = 0; i < items.length; i += 1) {
+      const id = normalizeText(items[i] && items[i].id ? items[i].id : "");
+      if (id && out.indexOf(id) === -1) out.push(id);
+    }
+    return out;
   }
 
   function mutationHasRelevantNode(mutation) {
@@ -559,17 +672,20 @@
 
   function scanNow() {
     ensureToolbar();
-    state.selectedSlots = collectSelectedSlots();
+    state.selectedCourses = collectSelectedCourses();
+    state.selectedSlots = collectSelectedSlotsFromCourses(state.selectedCourses);
     const courses = collectCandidatePanels();
     let rowCount = 0;
     let conflictRows = 0;
     let pendingRows = 0;
+    let selectedRows = 0;
     for (let i = 0; i < courses.length; i += 1) {
       const course = courses[i];
       rowCount += course.rows.length;
       const result = applyConflictState(course);
       conflictRows += result.conflicts;
       pendingRows += result.pending;
+      selectedRows += result.selected;
       ensureSummaryButton(course);
     }
 
@@ -584,7 +700,7 @@
       return;
     }
     state.zeroDomReported = false;
-    setStatus(`已选时间 ${state.selectedSlots.length} 段，候选 ${courses.length} 门/${rowCount} 班，冲突 ${conflictRows} 班，待确认 ${pendingRows} 班`);
+    setStatus(`已选时间 ${state.selectedSlots.length} 段，候选 ${courses.length} 门/${rowCount} 班，已选 ${selectedRows} 班，冲突 ${conflictRows} 班，待确认 ${pendingRows} 班`);
   }
 
   function collectCandidatePanels() {
@@ -599,38 +715,60 @@
     const panels = uniqueNodes(scoped.concat(fallback));
     const courses = [];
     for (let i = 0; i < panels.length; i += 1) {
-      const panel = panels[i];
-      if (!panel || typeof panel.querySelector !== "function") continue;
-        const heading = panel.querySelector(".panel-heading.kc_head") || panel.querySelector(".panel-heading");
-        const nameNode = panel.querySelector(".kcmc a");
-        const kcmc = panel.querySelector(".kcmc");
-        const headingText = normalizeText(kcmc ? kcmc.textContent : heading ? heading.textContent : "");
-        const codeMatch = headingText.match(/\(([A-Za-z0-9._-]+)\)/);
-        const code = codeMatch ? codeMatch[1] : "";
-        const courseName = nameNode ? normalizeText(nameNode.textContent) : headingText.replace(/^\([^)]+\)/, "").replace(/\s+-\s+.*$/, "").trim();
-        const rowNodes = toArray(panel.querySelectorAll("tr.body_tr"));
-        const rows = [];
-        for (let j = 0; j < rowNodes.length; j += 1) {
-          const row = rowNodes[j];
-          const teacher = normalizeText(textOf(row.querySelector(".jsxm")) || textOf(row.querySelector(".jsxmzc")));
-          const department = normalizeText(textOf(row.querySelector(".kkxymc")));
-          const timeText = getMultilineText(row.querySelector(".sksj"));
-          rows.push({ row, teacher, department, timeText, slots: parseScheduleText(timeText) });
-        }
-        const course = { panel, heading, nameNode, kcmc, code, courseName, rows, department: firstDepartment(rows), multiTeacher: hasMultipleTeachers(rows) };
-        if (course.panel && course.heading && course.kcmc && course.courseName) courses.push(course);
+      const course = parseCoursePanel(panels[i]);
+      if (course) courses.push(course);
     }
     return courses;
   }
 
+  function parseCoursePanel(panel) {
+    if (!panel || typeof panel.querySelector !== "function") return null;
+    const heading = panel.querySelector(".panel-heading.kc_head") || panel.querySelector(".panel-heading");
+    const nameNode = panel.querySelector(".kcmc a");
+    const kcmc = panel.querySelector(".kcmc");
+    const headingText = normalizeText(kcmc ? kcmc.textContent : heading ? heading.textContent : "");
+    const codeMatch = headingText.match(/\(([A-Za-z0-9._-]+)\)/);
+    const code = codeMatch ? codeMatch[1] : "";
+    const courseName = nameNode ? normalizeText(nameNode.textContent) : headingText.replace(/^\([^)]+\)/, "").replace(/\s+-\s+.*$/, "").trim();
+    const rowNodes = toArray(panel.querySelectorAll("tr.body_tr"));
+    const rows = [];
+    for (let j = 0; j < rowNodes.length; j += 1) {
+      const row = rowNodes[j];
+      const teacher = normalizeText(textOf(row.querySelector(".jsxm")) || textOf(row.querySelector(".jsxmzc")));
+      const department = normalizeText(textOf(row.querySelector(".kkxymc")));
+      const timeText = getMultilineText(row.querySelector(".sksj"));
+      rows.push({ row, teacher, department, timeText, slots: parseScheduleText(timeText) });
+    }
+    const course = { panel, heading, nameNode, kcmc, code, courseName, rows, department: firstDepartment(rows), multiTeacher: hasMultipleTeachers(rows) };
+    return course.panel && course.heading && course.kcmc && course.courseName ? course : null;
+  }
+
   function collectSelectedSlots() {
+    return collectSelectedSlotsFromCourses(collectSelectedCourses());
+  }
+
+  function collectSelectedSlotsFromCourses(selectedCourses) {
     const slots = [];
-    const items = toArray(document.querySelectorAll(".right_div .outer_xkxx_list li.list-group-item, .outer_xkxx_list li.list-group-item"));
-    for (let i = 0; i < items.length; i += 1) {
-      const parsed = parseScheduleText(getMultilineText(items[i].querySelector("p.time, .time")));
+    for (let i = 0; i < selectedCourses.length; i += 1) {
+      const parsed = selectedCourses[i].slots || [];
       for (let j = 0; j < parsed.length; j += 1) slots.push(parsed[j]);
     }
     return slots;
+  }
+
+  function collectSelectedCourses() {
+    const selected = [];
+    const items = toArray(document.querySelectorAll(".right_div .outer_xkxx_list li.list-group-item, .outer_xkxx_list li.list-group-item"));
+    for (let i = 0; i < items.length; i += 1) {
+      const text = getMultilineText(items[i]);
+      selected.push({
+        node: items[i],
+        text,
+        normalizedText: normalizeText(text).toUpperCase(),
+        slots: parseScheduleText(getMultilineText(items[i].querySelector("p.time, .time")) || text),
+      });
+    }
+    return selected;
   }
 
   function hasConflict(slots, selectedSlots) {
@@ -647,15 +785,21 @@
     let pending = 0;
     let allRowsAreConflict = course.rows.length > 0;
     let anyRowConflict = false;
+    let selectedRows = 0;
 
     for (let i = 0; i < course.rows.length; i += 1) {
       const entry = course.rows[i];
-      const rowConflict = entry.slots.length > 0 && hasConflict(entry.slots, state.selectedSlots);
+      const rowSelected = isSelectedCourseRow(course, entry);
+      const rowConflict = !rowSelected && entry.slots.length > 0 && hasConflict(entry.slots, state.selectedSlots);
       const rowPending = !entry.timeText || entry.slots.length === 0;
+      entry.row.classList.toggle("jcp-row-selected", rowSelected);
       entry.row.classList.toggle("jcp-row-conflict", rowConflict);
       entry.row.classList.toggle("jcp-hidden-conflict", rowConflict && state.settings.hideConflicts);
       removeOwned(entry.row, ".jcp-row-status");
-      if (rowConflict) {
+      if (rowSelected) {
+        selectedRows += 1;
+        addRowStatus(entry.row, "已选", "jcp-selected-tag");
+      } else if (rowConflict) {
         conflicts += 1;
         anyRowConflict = true;
       } else if (rowPending) {
@@ -665,20 +809,41 @@
     }
 
     course.panel.classList.toggle("jcp-course-conflict", anyRowConflict);
-    course.panel.classList.toggle("jcp-hidden-conflict", allRowsAreConflict && state.settings.hideConflicts);
-    updateHeadingConflictStatus(course, conflicts, pending);
+    course.panel.classList.toggle("jcp-hidden-conflict", allRowsAreConflict && selectedRows === 0 && state.settings.hideConflicts);
+    updateHeadingConflictStatus(course, conflicts, pending, selectedRows);
 
-    return { conflicts, pending };
+    return { conflicts, pending, selected: selectedRows };
   }
 
-  function updateHeadingConflictStatus(course, conflicts, pending) {
+  function isSelectedCourseRow(course, entry) {
+    if (!state.selectedCourses || !state.selectedCourses.length || !course || !entry) return false;
+    const code = normalizeText(course.code).toUpperCase();
+    const name = normalizeText(course.courseName);
+    const teacher = normalizeTeacherName(entry.teacher);
+    for (let i = 0; i < state.selectedCourses.length; i += 1) {
+      const selected = state.selectedCourses[i];
+      const text = selected.normalizedText || "";
+      const hasCourseIdentity = Boolean((code && text.indexOf(code) >= 0) || (name && selected.text && selected.text.indexOf(name) >= 0));
+      if (!hasCourseIdentity) continue;
+      const selectedTeacherText = normalizeTeacherName(selected.text);
+      const teacherMatches = !teacher || selectedTeacherText.indexOf(teacher) >= 0 || teacher.indexOf(selectedTeacherText) >= 0;
+      if (!teacherMatches && selectedTeacherText) continue;
+      if (!entry.slots.length || !selected.slots.length || hasConflict(entry.slots, selected.slots)) return true;
+    }
+    return false;
+  }
+
+  function updateHeadingConflictStatus(course, conflicts, pending, selectedRows) {
     const info = ensureHeadingRight(course);
     if (!info) return;
     removeOwned(info, ".jcp-heading-status");
     const total = course.rows.length;
     let text = "不冲突";
     let className = "jcp-ok-tag";
-    if (conflicts > 0 && total > 0 && conflicts === total) {
+    if (selectedRows > 0) {
+      text = selectedRows === total ? "已选" : `已选 ${selectedRows} 班`;
+      className = "jcp-selected-tag";
+    } else if (conflicts > 0 && total > 0 && conflicts === total) {
       text = "全部冲突";
       className = "jcp-conflict-tag";
     } else if (conflicts > 0) {
@@ -692,6 +857,7 @@
     tag.className = `jcp-badge jcp-heading-status ${className}`;
     tag.textContent = text;
     info.appendChild(tag);
+    normalizeHeadingRatingPosition(course);
     updateTeacherBadge(course, info);
   }
 
@@ -747,6 +913,18 @@
       if (target.querySelector(".jcp-row-summary-wrap")) continue;
       const wrap = document.createElement("span");
       wrap.className = "jcp-row-summary-wrap";
+      const link = document.createElement("a");
+      link.className = "jcp-community-link";
+      link.href = "https://course.sjtu.plus/course";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "选课社区";
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        openCommunityCourse(course, entry, link);
+      });
       const button = document.createElement("button");
       button.type = "button";
       button.className = "jcp-summary-btn jcp-primary";
@@ -757,6 +935,7 @@
         event.stopImmediatePropagation();
         runCourseSummary(course, entry, wrap, button);
       });
+      wrap.appendChild(link);
       wrap.appendChild(button);
       target.appendChild(wrap);
     }
@@ -764,39 +943,73 @@
 
   function ensureCommunityLink(course, info) {
     if (info.querySelector(".jcp-community-link")) return;
-    const query = course.courseName || course.code || "";
-    const href = query ? `https://course.sjtu.plus/course?q=${encodeURIComponent(query)}` : "https://course.sjtu.plus/course";
     const link = document.createElement("a");
     link.className = "jcp-community-link";
-    link.href = href;
+    link.href = "https://course.sjtu.plus/course";
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.textContent = "选课社区";
     link.addEventListener("click", (event) => {
+      event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
+      openCommunityCourse(course, course.multiTeacher ? null : course.rows[0] || null, link);
     });
     info.appendChild(link);
+  }
+
+  async function openCommunityCourse(course, rowEntry, link) {
+    const oldText = link.textContent;
+    link.textContent = "匹配中...";
+    try {
+      const prepared = await prepareExpandedCourse(course, rowEntry, true);
+      course = prepared.course;
+      rowEntry = prepared.rowEntry;
+      if (course.multiTeacher && (!rowEntry || !rowEntry.teacher)) throw new Error("多教师课程需要先选择具体教学班");
+      const teacher = rowEntry && rowEntry.teacher ? rowEntry.teacher : firstTeacher(course.rows);
+      const sourceResult = await searchJCourseSources(course, teacher, rowEntry && rowEntry.department ? rowEntry.department : course.department);
+      if (!sourceResult || !sourceResult.sources || !sourceResult.sources.length) throw new Error("未匹配到 jCourse 课程");
+      const url = `https://course.sjtu.plus/course/${encodeURIComponent(sourceResult.sources[0].course.id)}`;
+      link.href = url;
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      reportError(`选课社区跳转失败：${course.code} ${course.courseName}`, message);
+    } finally {
+      link.textContent = oldText;
+    }
   }
 
   async function runCourseSummary(course, rowEntry, info, button) {
     button.disabled = true;
     button.textContent = "总结中...";
-    const teacher = rowEntry && rowEntry.teacher ? rowEntry.teacher : firstTeacher(course.rows);
-    const department = rowEntry && rowEntry.department ? rowEntry.department : course.department;
-    const contextHtml = rowEntry && teacher ? `<span class="jcp-badge jcp-warning">教师：${escapeHtml(teacher)}</span>` : "";
-    const result = ensureHeadingSummaryLine(course);
-    renderHeadingSummary(result, `${contextHtml}<span class="jcp-badge jcp-warning">正在读取 jCourse</span>`, "");
     try {
+      const prepared = await prepareExpandedCourse(course, rowEntry, true);
+      course = prepared.course;
+      rowEntry = prepared.rowEntry;
+      if (course.multiTeacher && (!rowEntry || !rowEntry.teacher)) {
+        clearHeadingSummary(course);
+        reportError(`多教师课程不支持总体总结：${course.code} ${course.courseName}`, "请点击具体教学班旁边的“本班评价总结”。");
+        return;
+      }
+      const result = ensureHeadingSummaryLine(course);
+      const teacher = rowEntry && rowEntry.teacher ? rowEntry.teacher : firstTeacher(course.rows);
+      const department = rowEntry && rowEntry.department ? rowEntry.department : course.department;
+      const contextHtml = teacher ? metaChipHtml("教师", teacher, "jcp-warning") : "";
+      renderHeadingSummary(result, `${contextHtml}${metaChipHtml("", "正在读取 jCourse", "jcp-warning")}`, "");
+      if (!teacher) throw new Error("缺少具体老师信息，无法进行评价总结");
       const sourceResult = await searchJCourseSources(course, teacher, department);
       if (!sourceResult || !sourceResult.sources || !sourceResult.sources.length) throw new Error(`jCourse 未匹配：${course.code} ${course.courseName}${department ? `（学院：${department}）` : "（缺少开课学院）"}`);
       const sources = sourceResult.sources;
       updateHeadingRating(course, sources);
       const sourceText = oldCodeSourcesText(course, sources);
-      renderHeadingSummary(result, `${contextHtml}<span class="jcp-badge jcp-warning">正在总结评价</span>`, sourceText ? `<span class="jcp-badge jcp-warning">${escapeHtml(sourceText)}</span>` : "");
+      const teacherText = matchedTeacherSourcesText(sources);
+      renderHeadingSummary(result, `${contextHtml}${metaChipHtml("", "正在总结评价", "jcp-warning")}`, sourceMetaHtml(sourceText, teacherText));
+      const summarizingSince = Date.now();
       const reviews = await fetchReviewsForSources(sources);
       if (!reviews.length) {
-        renderHeadingSummary(result, `${contextHtml}<span class="jcp-badge jcp-warning">暂无评价可总结</span>`, sourceText ? `<span class="jcp-badge jcp-warning">${escapeHtml(sourceText)}</span>` : "");
+        await waitUntilElapsed(summarizingSince, 100);
+        renderHeadingSummary(result, `${contextHtml}${metaChipHtml("", "暂无评价可总结", "jcp-warning")}`, sourceMetaHtml(sourceText, teacherText));
         return;
       }
       const stale = isPossiblyStale(reviews);
@@ -805,18 +1018,76 @@
       const key = state.settings.providerKeys[provider];
       if (!key) throw new Error(`${PROVIDERS[provider].label} API Key 未配置`);
       const summary = await summarizeReviews(provider, sources, reviews);
+      await waitUntilElapsed(summarizingSince, 100);
       const extras = [];
-      if (sourceText) extras.push(`<span class="jcp-badge jcp-warning">${escapeHtml(sourceText)}</span>`);
-      if (stale) extras.push('<span class="jcp-badge jcp-warning">可能过时</span>');
+      if (sourceText) extras.push(metaChipHtml("旧课号", sourceText, "jcp-warning"));
+      if (teacherText) extras.push(metaChipHtml("jCourse教师", teacherText, "jcp-warning"));
+      if (stale) extras.push(metaChipHtml("", "可能过时", "jcp-warning"));
       renderHeadingSummary(result, `${contextHtml}<span class="jcp-badge jcp-summary">${escapeHtml(summary)}</span>`, extras.join(""));
     } catch (error) {
       const message = error && error.message ? error.message : String(error);
-      renderHeadingSummary(result, `${contextHtml}<span class="jcp-badge jcp-conflict-tag">错误：${escapeHtml(message)}</span>`, "");
+      const result = ensureHeadingSummaryLine(course);
+      renderHeadingSummary(result, metaChipHtml("错误", message, "jcp-conflict-tag"), "");
       reportError(`课程总结失败：${course.code} ${course.courseName}`, message);
     } finally {
       button.disabled = false;
       button.textContent = "重新总结";
     }
+  }
+
+  async function prepareExpandedCourse(course, rowEntry, requireTeacher) {
+    expandCoursePanel(course);
+    let freshCourse = parseCoursePanel(course.panel) || course;
+    let freshRow = resolveFreshRow(freshCourse, rowEntry);
+    if (courseHasLoadedRows(freshCourse, freshRow, requireTeacher)) {
+      return { course: freshCourse, rowEntry: freshRow };
+    }
+    const start = Date.now();
+    while (Date.now() - start < EXPAND_WAIT_TIMEOUT_MS) {
+      await delay(EXPAND_WAIT_INTERVAL_MS);
+      freshCourse = parseCoursePanel(course.panel) || freshCourse;
+      freshRow = resolveFreshRow(freshCourse, rowEntry);
+      if (courseHasLoadedRows(freshCourse, freshRow, requireTeacher)) {
+        return { course: freshCourse, rowEntry: freshRow };
+      }
+    }
+    return { course: freshCourse, rowEntry: freshRow };
+  }
+
+  function courseHasLoadedRows(course, rowEntry, requireTeacher) {
+    if (!course || !course.rows || !course.rows.length) return false;
+    if (!requireTeacher) return true;
+    if (rowEntry && rowEntry.teacher) return true;
+    return Boolean(firstTeacher(course.rows));
+  }
+
+  function resolveFreshRow(course, rowEntry) {
+    if (!course || !course.rows || !course.rows.length) return null;
+    if (rowEntry && rowEntry.row) {
+      for (let i = 0; i < course.rows.length; i += 1) {
+        if (course.rows[i].row === rowEntry.row) return course.rows[i];
+      }
+      const oldId = rowEntry.row.getAttribute ? rowEntry.row.getAttribute("id") : "";
+      if (oldId) {
+        for (let i = 0; i < course.rows.length; i += 1) {
+          const newId = course.rows[i].row && course.rows[i].row.getAttribute ? course.rows[i].row.getAttribute("id") : "";
+          if (newId === oldId) return course.rows[i];
+        }
+      }
+    }
+    if (course.rows.length === 1) return course.rows[0];
+    return null;
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
+  function waitUntilElapsed(startTime, minMs) {
+    const remaining = minMs - (Date.now() - startTime);
+    return remaining > 0 ? delay(remaining) : Promise.resolve();
   }
 
   function ensureHeadingSummaryLine(course) {
@@ -844,27 +1115,162 @@
     if (extra) extra.innerHTML = extraHtml || "";
   }
 
+  function clearHeadingSummary(course) {
+    if (!course || !course.heading) return;
+    removeOwned(course.heading, ".jcp-heading-summary-line");
+  }
+
+  function metaChipHtml(label, value, className) {
+    const safeValue = escapeHtml(value);
+    const labelHtml = label ? `<span class="jcp-chip-label">${escapeHtml(label)}:</span>` : "";
+    return `<span class="jcp-badge ${className || ""}">${labelHtml}${safeValue}</span>`;
+  }
+
+  function expandCoursePanel(course) {
+    if (!course || !course.panel) return;
+    if (expandSjtuCoursePanel(course)) return;
+    const collapse = findCourseCollapse(course);
+    if (!collapse || isCollapseOpen(collapse)) return;
+    const toggles = findCourseCollapseToggles(course, collapse);
+    if (toggles.length) {
+      try {
+        clickElement(toggles[0]);
+      } catch (error) {
+        dispatchMouseClick(toggles[0]);
+      }
+    }
+    window.setTimeout(() => {
+      if (!isCollapseOpen(collapse)) forceOpenCollapse(collapse, toggles);
+    }, 80);
+  }
+
+  function expandSjtuCoursePanel(course) {
+    const body = course.panel.querySelector(".panel-body.table-responsive, .panel-body");
+    const heading = course.panel.querySelector(".panel-heading.kc_head") || course.heading;
+    if (!body || !heading || !isElementHidden(body)) return false;
+    clickElement(heading);
+    window.setTimeout(() => {
+      if (isElementHidden(body)) body.style.display = "";
+    }, 120);
+    return true;
+  }
+
+  function isElementHidden(element) {
+    if (!element) return false;
+    if (element.style && element.style.display === "none") return true;
+    const computed = window.getComputedStyle ? window.getComputedStyle(element) : null;
+    return Boolean(computed && computed.display === "none");
+  }
+
+  function findCourseCollapse(course) {
+    const direct = course.panel.querySelector(".panel-collapse.collapse, .collapse");
+    if (direct) return direct;
+    const toggles = findCourseCollapseToggles(course, null);
+    for (let i = 0; i < toggles.length; i += 1) {
+      const target = collapseTargetFromToggle(toggles[i]);
+      if (target) return target;
+    }
+    return null;
+  }
+
+  function findCourseCollapseToggles(course, collapse) {
+    const nodes = [];
+    const roots = [];
+    if (course.heading) roots.push(course.heading);
+    if (course.panel) roots.push(course.panel);
+    for (let r = 0; r < roots.length; r += 1) {
+      const found = toArray(roots[r].querySelectorAll("[data-toggle='collapse'], [data-target], a[href^='#']"));
+      for (let i = 0; i < found.length; i += 1) {
+        const target = collapseTargetFromToggle(found[i]);
+        const matchesTarget = !collapse || target === collapse;
+        if (matchesTarget && nodes.indexOf(found[i]) === -1) nodes.push(found[i]);
+      }
+    }
+    return nodes;
+  }
+
+  function collapseTargetFromToggle(toggle) {
+    if (!toggle || !toggle.getAttribute) return null;
+    const selector = toggle.getAttribute("data-target") || toggle.getAttribute("href") || "";
+    if (!selector || selector.charAt(0) !== "#") return null;
+    const id = selector.slice(1);
+    if (!id) return null;
+    return document.getElementById(id);
+  }
+
+  function isCollapseOpen(collapse) {
+    if (!collapse || !collapse.classList) return true;
+    return collapse.classList.contains("in") || collapse.classList.contains("show") || collapse.getAttribute("aria-expanded") === "true";
+  }
+
+  function forceOpenCollapse(collapse, toggles) {
+    if (collapse && collapse.classList) {
+      collapse.classList.add("in");
+      collapse.classList.add("show");
+      collapse.style.height = "auto";
+      collapse.setAttribute("aria-expanded", "true");
+    }
+    for (let i = 0; i < toggles.length; i += 1) {
+      toggles[i].setAttribute("aria-expanded", "true");
+      if (toggles[i].classList) toggles[i].classList.remove("collapsed");
+    }
+  }
+
+  function dispatchMouseClick(element) {
+    if (!element || !element.dispatchEvent) return;
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true, view: window });
+    element.dispatchEvent(event);
+  }
+
+  function clickElement(element) {
+    if (!element) return;
+    if (typeof element.click === "function") {
+      element.click();
+    } else {
+      dispatchMouseClick(element);
+    }
+  }
+
   function updateHeadingRating(course, sources) {
     if (!course || !course.heading) return;
-    removeOwned(course.heading, ".jcp-heading-rating");
-    const statusNode = findNativeStatusNode(course);
-    const target = statusNode || course.nameNode || course.kcmc || (course.heading.querySelector(".panel-title") || course.heading);
+    removeOwned(course.panel || course.heading, ".jcp-heading-rating");
+    const target = findRatingAnchor(course);
     if (!target) return;
     const tag = document.createElement("span");
     tag.className = "jcp-heading-rating jcp-title-rating";
     tag.title = formatRatingTooltip(sources);
     tag.textContent = formatHeadingRating(sources);
+    insertRatingAfterAnchor(target, tag);
+    normalizeHeadingRatingPosition(course);
+  }
+
+  function findRatingAnchor(course) {
+    return findNativeStatusNode(course);
+  }
+
+  function normalizeHeadingRatingPosition(course) {
+    if (!course || !course.heading) return;
+    const rating = course.heading.querySelector(".jcp-heading-rating");
+    const target = findRatingAnchor(course);
+    if (!rating || !target) return;
+    const next = target.nextSibling;
+    if (next === rating) return;
+    insertRatingAfterAnchor(target, rating);
+  }
+
+  function insertRatingAfterAnchor(target, rating) {
+    if (!target || !rating) return;
     if (target.nodeType === 3 && target.parentNode) {
-      target.parentNode.insertBefore(tag, target.nextSibling);
-    } else if (target.insertAdjacentElement && target !== course.heading) {
-      target.insertAdjacentElement("afterend", tag);
-    } else {
-      target.appendChild(tag);
+      target.parentNode.insertBefore(rating, target.nextSibling);
+    } else if (target.parentNode) {
+      target.parentNode.insertBefore(rating, target.nextSibling);
     }
   }
 
   function findNativeStatusNode(course) {
     if (!course || !course.heading) return null;
+    const statusById = course.heading.querySelector("[id^='zt_txt_']");
+    if (statusById && !closestPluginNode(statusById)) return statusById;
     const nodes = toArray(course.heading.querySelectorAll("span, b, strong, em, i, small, label, div"));
     let fallback = null;
     for (let i = 0; i < nodes.length; i += 1) {
@@ -954,30 +1360,58 @@
   }
 
   async function searchJCourseSources(course, teacher, department) {
-    const cacheKey = stableKey(["sources", course.code, course.courseName, teacher, department, course.multiTeacher ? "multi" : "single"]);
+    const normalizedTeacher = normalizeTeacherName(teacher);
+    const cacheKey = stableKey(["sources-v3", course.code, course.courseName, normalizedTeacher, department, course.multiTeacher ? "multi" : "single", state.settings.jcourseApiKey ? "key" : "session"]);
     const cached = getCache(state.jcourseCache, cacheKey);
     if (cached !== undefined) return cached;
-    const queries = course.multiTeacher
-      ? uniqueStrings(compactValues([`${course.courseName} ${course.code} ${teacher}`, `${course.courseName} ${teacher}`]))
-      : uniqueStrings(compactValues([`${course.courseName} ${course.code}`, course.courseName]));
-    const found = [];
-    for (const q of queries) {
-      const data = await requestJson(`${COURSE_API_BASE}/course/?q=${encodeURIComponent(q)}&page=1&page_size=10`);
+    const queries = jcourseSearchQueries(course, teacher);
+    const candidates = [];
+    for (let qIndex = 0; qIndex < queries.length; qIndex += 1) {
+      const q = queries[qIndex];
+      const data = await requestJCourseJson(`${COURSE_API_BASE}/course/?q=${encodeURIComponent(q)}&page=1&page_size=20`);
       const items = Array.isArray(data.items) ? data.items : [];
       for (let i = 0; i < items.length; i += 1) {
-        if (!departmentMatches(items[i], department)) continue;
-        const scored = { course: items[i], score: scoreCourseMatch(items[i], course, teacher, course.multiTeacher) };
-        if (scored.score >= 80 && !sourceExists(found, scored.course.id)) found.push(scored);
+        if (!sourceExists(candidates, items[i].id)) candidates.push({ course: items[i], queryIndex: qIndex });
       }
     }
-    found.sort((a, b) => b.score - a.score);
+
+    const found = pickJCourseMatches(candidates, course, teacher, department);
     const value = { sources: found };
     setCache(state.jcourseCache, cacheKey, value);
     saveJson(JCACHE_KEY, state.jcourseCache);
     return value;
   }
 
-  function scoreCourseMatch(item, course, teacher, requireTeacher) {
+  function jcourseSearchQueries(course, teacher) {
+    const name = normalizeText(course && course.courseName ? course.courseName : "");
+    const teacherName = normalizeText(teacher);
+    return uniqueStrings(compactValues([
+      teacherName && name ? `${name} ${teacherName}` : "",
+      name,
+    ]));
+  }
+
+  function pickJCourseMatches(candidates, course, teacher, department) {
+    const levels = [
+      { teacher: true, name: true, minScore: 105 },
+      { teacher: false, name: true, minScore: 80 },
+    ];
+    const found = [];
+    for (let levelIndex = 0; levelIndex < levels.length; levelIndex += 1) {
+      const level = levels[levelIndex];
+      if (course.multiTeacher && !level.teacher) continue;
+      for (let i = 0; i < candidates.length; i += 1) {
+        const item = candidates[i].course;
+        if (!departmentMatches(item, department)) continue;
+        const score = scoreCourseMatch(item, course, teacher, level.teacher, level.name);
+        if (score >= level.minScore && !sourceExists(found, item.id)) found.push({ course: item, score });
+      }
+    }
+    found.sort((a, b) => b.score - a.score);
+    return found;
+  }
+
+  function scoreCourseMatch(item, course, teacher, requireTeacher, requireName) {
     let score = 0;
     const itemCode = normalizeText(item.code || "");
     const itemName = normalizeText(item.name || "");
@@ -989,6 +1423,7 @@
     const codeExact = Boolean(course.code && itemCode.toUpperCase() === course.code.toUpperCase());
     const teacherMatch = Boolean(normalizedTeacher && normalizedItemTeacher && (normalizedTeacher.indexOf(normalizedItemTeacher) >= 0 || normalizedItemTeacher.indexOf(normalizedTeacher) >= 0));
     if (requireTeacher && !teacherMatch) return 0;
+    if (requireName && !nameLoose && !nameExact) return 0;
     if (nameExact) score += 90;
     else if (nameLoose) score += 45;
     if (codeExact) score += 25;
@@ -1013,7 +1448,23 @@
         if (codes.indexOf(code) === -1) codes.push(code);
       }
     }
-    return codes.length ? `匹配旧课号: ${codes.join(",")}` : "";
+    return codes.length ? codes.join(",") : "";
+  }
+
+  function matchedTeacherSourcesText(sources) {
+    const teachers = [];
+    for (let i = 0; i < sources.length; i += 1) {
+      const teacher = normalizeText(sources[i].course && sources[i].course.main_teacher && sources[i].course.main_teacher.name ? sources[i].course.main_teacher.name : "");
+      if (teacher && teachers.indexOf(teacher) === -1) teachers.push(teacher);
+    }
+    return teachers.join(",");
+  }
+
+  function sourceMetaHtml(sourceText, teacherText) {
+    const parts = [];
+    if (sourceText) parts.push(metaChipHtml("旧课号", sourceText, "jcp-warning"));
+    if (teacherText) parts.push(metaChipHtml("jCourse教师", teacherText, "jcp-warning"));
+    return parts.join("");
   }
 
   function formatSourcesRating(sources) {
@@ -1092,10 +1543,10 @@
   }
 
   async function fetchReviews(courseId) {
-    const cacheKey = stableKey(["latestReviews", courseId]);
+    const cacheKey = stableKey(["topReviews-v2", courseId, state.settings.jcourseApiKey ? "key" : "session"]);
     const cached = getCache(state.jcourseCache, cacheKey);
     if (cached !== undefined) return cached;
-    const data = await requestJson(`${COURSE_API_BASE}/course/${encodeURIComponent(courseId)}/review?order_by=created_at&page=1&page_size=5`);
+    const data = await requestJCourseJson(`${COURSE_API_BASE}/course/${encodeURIComponent(courseId)}/review?order_by=like_count&page=1&page_size=10`);
     const reviews = Array.isArray(data.items) ? data.items : [];
     setCache(state.jcourseCache, cacheKey, reviews);
     saveJson(JCACHE_KEY, state.jcourseCache);
@@ -1220,6 +1671,21 @@
     }).finally(() => state.activeRequests.delete(requestKey));
     if (method === "GET") state.activeRequests.set(requestKey, promise);
     return promise;
+  }
+
+  function requestJCourseJson(url, options = {}) {
+    const headers = {};
+    if (options.headers) {
+      const keys = Object.keys(options.headers);
+      for (let i = 0; i < keys.length; i += 1) headers[keys[i]] = options.headers[keys[i]];
+    }
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+    if (state.settings.jcourseApiKey) headers.Authorization = `Bearer ${state.settings.jcourseApiKey}`;
+    const nextOptions = {};
+    const optionKeys = Object.keys(options);
+    for (let i = 0; i < optionKeys.length; i += 1) nextOptions[optionKeys[i]] = options[optionKeys[i]];
+    nextOptions.headers = headers;
+    return requestJson(url, nextOptions);
   }
 
   function formatRating(rating) {
@@ -1574,6 +2040,30 @@
 
   function setCache(cache, key, value) {
     cache[key] = { time: Date.now(), value };
+    pruneCache(cache, CACHE_MAX_ENTRIES);
+  }
+
+  function pruneCache(cache, maxEntries) {
+    if (!cache || typeof cache !== "object") return;
+    const now = Date.now();
+    const keys = Object.keys(cache);
+    for (let i = 0; i < keys.length; i += 1) {
+      const entry = cache[keys[i]];
+      if (!entry || typeof entry.time !== "number" || now - entry.time > CACHE_TTL_MS) {
+        delete cache[keys[i]];
+      }
+    }
+    const freshKeys = Object.keys(cache);
+    if (freshKeys.length <= maxEntries) return;
+    freshKeys.sort((a, b) => {
+      const at = cache[a] && typeof cache[a].time === "number" ? cache[a].time : 0;
+      const bt = cache[b] && typeof cache[b].time === "number" ? cache[b].time : 0;
+      return at - bt;
+    });
+    const removeCount = freshKeys.length - maxEntries;
+    for (let i = 0; i < removeCount; i += 1) {
+      delete cache[freshKeys[i]];
+    }
   }
 
   function stableKey(parts) {
