@@ -7,6 +7,7 @@ Browser userscripts for SJTU-specific workflows.
 | Script | Entry file | Purpose |
 | --- | --- | --- |
 | SJTU Course Assistant Plus | `scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js` | Enhances SJTU course selection pages with time-conflict filtering and on-demand review summaries. |
+| Shuiyuan Privacy Mask | `scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js` | Hides your own avatar, username, display name, and profile identity on Shuiyuan with a sidebar toggle. |
 
 ## Repository Layout
 
@@ -37,6 +38,7 @@ Use `shared/` only for development notes or source snippets that will be copied 
 
 ```powershell
 node --check scripts\sjtu-course-assistant-plus\sjtu-course-assistant-plus.user.js
+node --check scripts\shuiyuan-privacy-mask\shuiyuan-privacy-mask.user.js
 ```
 
 ## Release Workflow

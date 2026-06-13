@@ -9,5 +9,13 @@
     "compatibility": {
       "disallowPrototypeArrayMethods": true
     }
+  },
+  {
+    "id": "shuiyuan-privacy-mask",
+    "name": "Shuiyuan Privacy Mask",
+    "entry": "scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js",
+    "readme": "scripts/shuiyuan-privacy-mask/README.md",
+    "changelog": "scripts/shuiyuan-privacy-mask/CHANGELOG.md",
+    "releaseBranch": "release/shuiyuan-privacy-mask"
   }
 ]
