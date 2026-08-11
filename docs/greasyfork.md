@@ -14,7 +14,7 @@
    - `@match`
    - `@grant`
    - `@connect`
-6. Run local validation before release.
+6. Run local validation and the GitHub Actions dry run before release.
 
 ## GitHub Raw URL Pattern
 
@@ -60,4 +60,6 @@ release/<script-id>
 
 GreasyFork syncs from that branch. `main` can contain development changes without immediately publishing them to users.
 
-To publish, run the GitHub Actions `Release userscript` workflow with the script ID and expected `@version`. The workflow validates all scripts, checks the target script's version, updates the target release branch, creates a per-script tag, and optionally creates a GitHub Release.
+To publish, run the GitHub Actions `Release userscript` workflow with the script ID and expected `@version`. Leave `dry_run` enabled first. The dry run validates all scripts and tooling tests, checks the remote release branch and tag, and does not change GitHub or GreasyFork state. After inspection, run it again with `dry_run` disabled. The workflow atomically updates the target release branch and per-script tag, then optionally creates a GitHub Release.
+
+A successful release-branch push only makes the configured source available and prompts the webhook check. Confirm the resulting version on GreasyFork separately; the workflow does not treat third-party synchronization latency as a successful Git operation.

@@ -38,3 +38,5 @@ npm run new -- --id shuiyuan-op-only --name "Shuiyuan Original Poster Only" --na
 ```
 
 The generator refuses duplicate IDs, non-kebab-case IDs, global matches, incomplete arguments, and existing target directories. It creates the four required files and registers the new script with `standardsVersion: 1`. The implementation marker deliberately makes strict validation fail until real behavior replaces it.
+
+The tooling test suite exercises this path end to end in a temporary repository: generation must produce neutral `UNLICENSED` metadata and valid GreasyFork URLs, incomplete code and documentation must fail, and a completed scaffold must pass strict repository validation.

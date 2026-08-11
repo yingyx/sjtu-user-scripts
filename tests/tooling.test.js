@@ -62,6 +62,14 @@ test("new scripts are strict while legacy scripts remain compatible", () => {
       matches: ["https://example.com/*"],
     });
 
+    const generatedManifest = JSON.parse(fs.readFileSync(path.join(temporaryRoot, "scripts.json"), "utf8"));
+    const generatedConfig = JSON.parse(fs.readFileSync(path.join(temporaryRoot, "scripts", "demo-helper", "greasyfork.json"), "utf8"));
+    const generatedSource = fs.readFileSync(path.join(temporaryRoot, "scripts", "demo-helper", "demo-helper.user.js"), "utf8");
+    assert.equal(generatedManifest[0].standardsVersion, 1);
+    assert.equal(generatedConfig.greasyForkId, null);
+    assert.equal(generatedConfig.codeSyncUrl, "https://raw.githubusercontent.com/example/repo/release/demo-helper/scripts/demo-helper/demo-helper.user.js");
+    assert.match(generatedSource, /^\/\/ @license\s+UNLICENSED$/m);
+
     const incomplete = validateRepository(temporaryRoot);
     assert.ok(incomplete.errors.some((error) => error.includes("scaffold implementation marker")));
     const entryPath = path.join(temporaryRoot, "scripts", "demo-helper", "demo-helper.user.js");

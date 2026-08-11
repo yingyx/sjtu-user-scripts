@@ -52,7 +52,7 @@ Run the repository validation and tooling tests locally:
 npm run check
 ```
 
-The checks are intentionally compatible with the existing scripts. Stricter rules will be introduced per script as each one is migrated.
+Every registered script currently uses standards-version-1 validation, including metadata, documentation, security, compatibility, and GreasyFork configuration checks.
 
 ## One-Sentence Agent Development
 
@@ -68,10 +68,10 @@ For deterministic scaffolding, agents use:
 npm run new -- --id <script-id> --name <localized-name> --name-en <English-name> --description <localized-description> --description-en <English-description> --match <URL-pattern>
 ```
 
-New scripts receive strict validation immediately; existing scripts keep the compatibility baseline until migrated separately. See `docs/agent-development.md` and `docs/standards.md`.
+New scripts receive strict validation immediately. Existing scripts are migrated explicitly rather than during unrelated work, and all current registrations are now migrated. See `docs/agent-development.md` and `docs/standards.md`.
 
 ## Release Workflow
 
-This repository supports multiple independent userscripts. Register each publishable script in `scripts.json`, keep per-script release notes in `scripts/<script-id>/CHANGELOG.md`, and publish through that script's `release/<script-id>` branch.
+This repository supports multiple independent userscripts. Register each publishable script in `scripts.json`, keep per-script release notes in `scripts/<script-id>/CHANGELOG.md`, and publish through that script's `release/<script-id>` branch. The manual workflow defaults to a read-only dry run and promotes a validated version only from `main`.
 
 See `docs/release.md` for the full CI/CD and GreasyFork synchronization workflow.
