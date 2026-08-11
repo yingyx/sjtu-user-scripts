@@ -18,14 +18,21 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-function readManifest(root) {
+function readManifest(root, options = {}) {
   const manifestPath = path.join(root, "scripts.json");
   if (!fs.existsSync(manifestPath)) throw new Error("Missing scripts.json");
   const scripts = readJson(manifestPath);
-  if (!Array.isArray(scripts) || scripts.length === 0) {
-    throw new Error("scripts.json must contain at least one script entry.");
-  }
+  if (!Array.isArray(scripts)) throw new Error("scripts.json must be an array.");
+  if (scripts.length === 0 && !options.allowEmpty) throw new Error("scripts.json must contain at least one script entry.");
   return scripts;
+}
+
+function repositoryInfo(root) {
+  const packageJson = readJson(path.join(root, "package.json"));
+  const repository = typeof packageJson.repository === "string" ? packageJson.repository : packageJson.repository?.url;
+  const match = String(repository || "").match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?$/i);
+  if (!match) throw new Error("package.json repository must be a GitHub HTTPS or SSH URL.");
+  return { owner: match[1], repo: match[2] };
 }
 
 function parseMetadata(source) {
@@ -77,6 +84,90 @@ function validateSyntax(root, entry) {
   return result.status === 0 ? "" : `Syntax check failed for ${entry}\n${result.stderr || result.stdout}`;
 }
 
+function validateStrictScript(root, script, source, metadata) {
+  const errors = [];
+  const folder = `scripts/${script.id}`;
+  const expectedEntry = `${folder}/${script.id}.user.js`;
+  const expectedReadme = `${folder}/README.md`;
+  const expectedChangelog = `${folder}/CHANGELOG.md`;
+  const expectedBranch = `release/${script.id}`;
+  const configPath = path.join(root, folder, "greasyfork.json");
+
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(script.id)) errors.push(`Invalid kebab-case script id: ${script.id}`);
+  if (script.entry !== expectedEntry) errors.push(`${script.id}: entry must be ${expectedEntry}.`);
+  if (script.readme !== expectedReadme) errors.push(`${script.id}: readme must be ${expectedReadme}.`);
+  if (script.changelog !== expectedChangelog) errors.push(`${script.id}: changelog must be ${expectedChangelog}.`);
+  if (script.releaseBranch !== expectedBranch) errors.push(`${script.id}: releaseBranch must be ${expectedBranch}.`);
+  if (!fs.existsSync(configPath)) errors.push(`Missing GreasyFork config: ${folder}/greasyfork.json`);
+
+  for (const key of ["name", "namespace", "version", "description", "license", "run-at", "grant"]) {
+    if (!metadataValue(metadata, key)) errors.push(`${expectedEntry} is missing @${key}.`);
+  }
+  if (!metadata.has("match") && !metadata.has("include")) errors.push(`${expectedEntry} needs at least one @match or @include.`);
+  const version = metadataValue(metadata, "version");
+  if (!parseVersion(version)) errors.push(`${expectedEntry} @version must use SemVer (X.Y.Z). Found: ${version}`);
+  for (const key of ["downloadURL", "updateURL", "installURL"]) {
+    if (metadata.has(key)) errors.push(`${expectedEntry} must not define @${key}; GreasyFork owns installed update URLs.`);
+  }
+  const grants = metadata.get("grant") || [];
+  if (grants.includes("none") && grants.length !== 1) errors.push(`${expectedEntry}: @grant none cannot be combined with other grants.`);
+  for (const connect of metadata.get("connect") || []) {
+    if (connect === "*") errors.push(`${expectedEntry}: wildcard @connect is not allowed.`);
+  }
+  for (const pattern of [...(metadata.get("match") || []), ...(metadata.get("include") || [])]) {
+    if (/^\*:\/\/\*\//.test(pattern)) errors.push(`${expectedEntry}: global URL pattern ${pattern} is not allowed.`);
+  }
+  for (const requirement of metadata.get("require") || []) {
+    if (!requirement.startsWith("https://")) errors.push(`${expectedEntry}: @require must use HTTPS: ${requirement}`);
+    const pinned = /(?:@|\/)(?:v?\d+\.\d+\.\d+)(?:[/?#]|$)|#(?:sha256|sha384|sha512)-/i.test(requirement);
+    if (!pinned) errors.push(`${expectedEntry}: @require must pin a version or integrity hash: ${requirement}`);
+  }
+  if (Buffer.byteLength(source, "utf8") > 2 * 1024 * 1024) errors.push(`${expectedEntry} exceeds GreasyFork's 2 MB limit.`);
+  if (source.charCodeAt(0) === 0xfeff || source.includes("\uFFFD")) errors.push(`${expectedEntry} is not clean UTF-8.`);
+  if (!source.includes('"use strict"') && !source.includes("'use strict'")) errors.push(`${expectedEntry} must enable strict mode.`);
+  if (/\beval\s*\(|\bnew\s+Function\s*\(/.test(source)) errors.push(`${expectedEntry} must not use eval or new Function.`);
+  if (/(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})/.test(source)) errors.push(`${expectedEntry} appears to contain a hard-coded secret.`);
+  if (source.includes("TODO(userscript)")) errors.push(`${expectedEntry} still contains the scaffold implementation marker.`);
+
+  const readmePath = path.join(root, expectedReadme);
+  if (fs.existsSync(readmePath)) {
+    const readme = fs.readFileSync(readmePath, "utf8");
+    if (readme.trim().length < 200) errors.push(`${expectedReadme} is too short.`);
+    if (!/(Privacy|隐私)/i.test(readme)) errors.push(`${expectedReadme} must document privacy and network behavior.`);
+    if (!/(Installation|安装)/i.test(readme)) errors.push(`${expectedReadme} must document installation.`);
+    if (readme.includes("TODO(userscript)")) errors.push(`${expectedReadme} still contains the scaffold documentation marker.`);
+  }
+  const changelogPath = path.join(root, expectedChangelog);
+  if (fs.existsSync(changelogPath)) {
+    const changelogVersion = latestChangelogVersion(fs.readFileSync(changelogPath, "utf8"));
+    if (changelogVersion !== version) errors.push(`${expectedChangelog} latest version must match @version ${version}.`);
+  }
+  if (fs.existsSync(configPath)) {
+    try {
+      const config = readJson(configPath);
+      const { owner, repo } = repositoryInfo(root);
+      const rawBase = `https://raw.githubusercontent.com/${owner}/${repo}/${expectedBranch}/${folder}`;
+      const expected = {
+        scriptId: script.id,
+        entry: `${script.id}.user.js`,
+        releaseBranch: expectedBranch,
+        codeSyncUrl: `${rawBase}/${script.id}.user.js`,
+        additionalInfoSyncUrl: `${rawBase}/README.md`,
+        changelog: "CHANGELOG.md",
+      };
+      for (const [key, value] of Object.entries(expected)) {
+        if (config[key] !== value) errors.push(`${folder}/greasyfork.json: ${key} must be ${value}.`);
+      }
+      if (config.greasyForkId !== null && !Number.isInteger(config.greasyForkId)) {
+        errors.push(`${folder}/greasyfork.json: greasyForkId must be null or an integer.`);
+      }
+    } catch (error) {
+      errors.push(`${folder}/greasyfork.json is invalid: ${error.message}`);
+    }
+  }
+  return errors;
+}
+
 function validateScript(root, script) {
   const errors = [];
   const entry = script.entry;
@@ -87,7 +178,10 @@ function validateScript(root, script) {
   const metadata = parseMetadata(source);
   if (!metadata) return { errors: [`Missing userscript metadata block: ${entry}`], version: "" };
 
-  for (const key of ["name", "namespace", "version", "description", "match"]) {
+  const baselineKeys = script.standardsVersion === 1
+    ? ["name", "namespace", "version", "description"]
+    : ["name", "namespace", "version", "description", "match"];
+  for (const key of baselineKeys) {
     if (!metadataValue(metadata, key)) errors.push(`Missing @${key} in ${entry}`);
   }
   if (metadata.has("downloadURL") || metadata.has("updateURL")) {
@@ -95,6 +189,10 @@ function validateScript(root, script) {
   }
   if (script.readme && !fs.existsSync(path.join(root, script.readme))) errors.push(`Missing README for ${script.id}: ${script.readme}`);
   if (script.changelog && !fs.existsSync(path.join(root, script.changelog))) errors.push(`Missing CHANGELOG for ${script.id}: ${script.changelog}`);
+  if (script.standardsVersion !== undefined && script.standardsVersion !== 1) {
+    errors.push(`${script.id}: unsupported standardsVersion ${script.standardsVersion}.`);
+  }
+  if (script.standardsVersion === 1) errors.push(...validateStrictScript(root, script, source, metadata));
 
   if (script.compatibility?.disallowPrototypeArrayMethods) {
     source.split(/\r?\n/).forEach((line, index) => {
@@ -143,5 +241,6 @@ module.exports = {
   parseMetadata,
   parseVersion,
   readManifest,
+  repositoryInfo,
   validateRepository,
 };

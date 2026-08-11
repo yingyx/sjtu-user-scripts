@@ -1,3 +1,4 @@
 outputs/
 *.log
 *.tmp
+CLAUDE.local.md

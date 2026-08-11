@@ -13,16 +13,19 @@ Browser userscripts for SJTU-specific workflows.
 
 ```text
 .
+├── AGENTS.md
+├── CLAUDE.md / GEMINI.md
 ├── scripts/
 │   └── <script-id>/
 │       ├── <script-id>.user.js
-│       └── README.md
+│       ├── README.md
+│       ├── CHANGELOG.md
+│       └── greasyfork.json
+├── templates/userscript/
+├── tools/
+├── tests/
 ├── shared/
-│   └── README.md
-├── docs/
-│   └── greasyfork.md
-├── outputs/
-└── HANDOFF.md
+└── docs/
 ```
 
 Each script keeps a complete `.user.js` entry file under `scripts/<script-id>/`. That file is the GreasyFork-compatible publishing artifact and must include its own userscript metadata block.
@@ -50,6 +53,22 @@ npm run check
 ```
 
 The checks are intentionally compatible with the existing scripts. Stricter rules will be introduced per script as each one is migrated.
+
+## One-Sentence Agent Development
+
+Coding agents can start from a natural-language request such as:
+
+> Build a userscript that shows only the original poster's replies on Shuiyuan, including tests, documentation, and release preparation.
+
+`AGENTS.md` is the canonical workflow for Codex, GitHub Copilot, Cursor, and other compatible agents. The one-line `CLAUDE.md` and `GEMINI.md` adapters import that same file, so repository rules are not duplicated.
+
+For deterministic scaffolding, agents use:
+
+```powershell
+npm run new -- --id <script-id> --name <localized-name> --name-en <English-name> --description <localized-description> --description-en <English-description> --match <URL-pattern>
+```
+
+New scripts receive strict validation immediately; existing scripts keep the compatibility baseline until migrated separately. See `docs/agent-development.md` and `docs/standards.md`.
 
 ## Release Workflow
 

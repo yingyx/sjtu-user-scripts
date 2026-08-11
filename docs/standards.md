@@ -1,18 +1,19 @@
 # Userscript Engineering Standards
 
-This document defines the target engineering standards for userscripts in this repository. The initial tooling rollout deliberately preserves compatibility with existing scripts; stricter checks will be enabled one script at a time in later migrations.
+This document defines the engineering standards for userscripts in this repository. Scripts registered with `standardsVersion: 1` receive strict checks. Existing entries without that field remain on the compatibility baseline until they are migrated in separate changes.
 
 ## Repository Structure
 
 - Use a meaningful English kebab-case ID, such as `shuiyuan-privacy-mask`.
 - Keep the distributable entry at `scripts/<id>/<id>.user.js`.
 - Register every distributable script in `scripts.json`.
+- New entries include `"standardsVersion": 1`; do not add it to an existing entry as part of unrelated work.
 - Keep a README, CHANGELOG, and `greasyfork.json` beside each entry file.
 - The published `.user.js` must remain standalone and readable.
 
 ## Metadata
 
-Every script must declare `@name`, `@namespace`, `@version`, `@description`, at least one precise `@match`, and only the permissions and network domains it actually uses.
+Every standards-version-1 script must declare `@name`, `@namespace`, `@version`, `@description`, `@license`, `@run-at`, `@grant`, at least one precise `@match`/`@include`, and only the permissions and network domains it actually uses.
 
 - Keep an existing script's primary `@name` and `@namespace` stable.
 - Do not add `@downloadURL` or `@updateURL` when GreasyFork is the distribution source.
@@ -44,7 +45,9 @@ Run the compatibility-preserving baseline locally:
 npm run check
 ```
 
-The baseline checks current metadata requirements, required files, syntax, and script-specific compatibility rules, then runs the tooling unit tests. Later rollout stages will add strict structure, security, and version-difference enforcement without changing all existing scripts at once.
+The baseline checks current metadata requirements, required files, syntax, and script-specific compatibility rules, then runs the tooling unit tests. For `standardsVersion: 1`, it additionally enforces exact paths, SemVer/changelog alignment, metadata and URL scope, readable code, a 2 MB limit, GreasyFork configuration, privacy/install documentation, secret scanning, and removal of the scaffold marker.
+
+New scripts always start at `standardsVersion: 1`. Existing scripts are not silently upgraded by unrelated work.
 
 ## GreasyFork Constraints
 
