@@ -1,0 +1,15 @@
+{
+  "name": "sjtu-user-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Validation and test tooling for SJTU userscripts.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "validate": "node tools/validate-userscripts.js",
+    "test": "node --test tests/*.test.js",
+    "check": "npm run validate && npm test"
+  },
+  "license": "UNLICENSED"
+}

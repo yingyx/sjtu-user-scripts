@@ -7,9 +7,17 @@ on:
       - main
       - "release/**"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate-userscripts:
+  check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      - name: Validate userscripts
-        run: node tools/validate-userscripts.js
+      - name: Validate repository and run tooling tests
+        run: npm run check

@@ -43,17 +43,12 @@ greasyfork.json
 
 ## CI
 
-CI runs on pushes to `main`, release branches, and pull requests. It validates every script listed in `scripts.json`:
-
-- `node --check` syntax validation.
-- Required userscript metadata.
-- No `@downloadURL` or `@updateURL` when Greasy Fork is the distribution source.
-- Optional compatibility rules, such as forbidding array prototype helpers on polluted SJTU pages.
+CI runs on pushes to `main`, release branches, and pull requests. It validates every script listed in `scripts.json` and runs the repository tooling tests.
 
 Run locally:
 
 ```powershell
-node tools/validate-userscripts.js
+npm run check
 ```
 
 ## Greasy Fork Setup

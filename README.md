@@ -41,6 +41,16 @@ node --check scripts\sjtu-course-assistant-plus\sjtu-course-assistant-plus.user.
 node --check scripts\shuiyuan-privacy-mask\shuiyuan-privacy-mask.user.js
 ```
 
+## Development Checks
+
+Run the repository validation and tooling tests locally:
+
+```powershell
+npm run check
+```
+
+The checks are intentionally compatible with the existing scripts. Stricter rules will be introduced per script as each one is migrated.
+
 ## Release Workflow
 
 This repository supports multiple independent userscripts. Register each publishable script in `scripts.json`, keep per-script release notes in `scripts/<script-id>/CHANGELOG.md`, and publish through that script's `release/<script-id>` branch.
