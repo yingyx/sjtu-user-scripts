@@ -16,6 +16,7 @@ This document defines the engineering standards for userscripts in this reposito
 Every standards-version-1 script must declare `@name`, `@namespace`, `@version`, `@description`, `@license`, `@run-at`, `@grant`, at least one precise `@match`/`@include`, and only the permissions and network domains it actually uses.
 
 - Keep an existing script's primary `@name` and `@namespace` stable.
+- Use an explicit SPDX license identifier, or `UNLICENSED` when the repository grants no license. Do not infer or generate a copyright owner.
 - Do not add `@downloadURL` or `@updateURL` when GreasyFork is the distribution source.
 - Avoid global URL matches and wildcard network access.
 - Use localized metadata keys when a script provides names or descriptions in multiple languages.
