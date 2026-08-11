@@ -2,10 +2,12 @@
 // @name         交大选课助手+
 // @name:en      SJTU Course Assistant Plus
 // @namespace    https://course.sjtu.plus/
-// @version      0.8.1
+// @version      0.8.2
 // @description  增强交大选课页面，使用 DeepSeek 对选课社区评价进行总结，并支持自定义维度。
 // @description:en  Enhance SJTU course selection with time-conflict filtering and on-demand jCourse + DeepSeek review summaries.
 // @author       Codex
+// @license      UNLICENSED
+// @supportURL   https://github.com/yingyx/sjtu-user-scripts/issues
 // @match        https://i.sjtu.edu.cn/xsxk/zzxkyzb_cxZzxkYzbIndex.html?*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
