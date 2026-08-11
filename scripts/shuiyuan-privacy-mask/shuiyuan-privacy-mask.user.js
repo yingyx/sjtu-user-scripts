@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         Shuiyuan Privacy Mask
 // @namespace    https://github.com/sjtu-user-scripts/shuiyuan-privacy-mask
-// @version      0.1.0
+// @version      0.1.1
 // @description  Hide your own avatar, username, display name, and profile identity on Shuiyuan, with a native-looking sidebar toggle.
 // @author       Codex
+// @license      UNLICENSED
+// @supportURL   https://github.com/yingyx/sjtu-user-scripts/issues
 // @match        https://shuiyuan.sjtu.edu.cn/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -467,7 +469,8 @@
       const parsed = new URL(url);
       const pathname = decodeURIComponent(parsed.pathname).toLowerCase();
       if (pathname.indexOf("/user_avatar/") === -1) return false;
-      const usernames = Array.from(state.profile.usernames);
+      const usernames = [];
+      for (const username of state.profile.usernames) usernames.push(username);
       for (let i = 0; i < usernames.length; i += 1) {
         const username = usernames[i].toLowerCase();
         if (username && pathname.indexOf("/" + username + "/") !== -1) return true;
@@ -480,7 +483,8 @@
   }
 
   function matchesAvatarTemplate(url) {
-    const templates = Array.from(state.profile.avatarTemplates);
+    const templates = [];
+    for (const template of state.profile.avatarTemplates) templates.push(template);
     for (let i = 0; i < templates.length; i += 1) {
       const template = templates[i];
       if (template.indexOf("%7Bsize%7D") === -1 && template.indexOf("{size}") === -1) continue;

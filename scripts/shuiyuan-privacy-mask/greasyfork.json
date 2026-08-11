@@ -1,8 +1,9 @@
 {
   "scriptId": "shuiyuan-privacy-mask",
+  "greasyForkId": null,
   "entry": "shuiyuan-privacy-mask.user.js",
   "releaseBranch": "release/shuiyuan-privacy-mask",
-  "codeSyncUrl": "https://raw.githubusercontent.com/<owner>/<repo>/release/shuiyuan-privacy-mask/scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js",
-  "additionalInfoSyncUrl": "https://raw.githubusercontent.com/<owner>/<repo>/release/shuiyuan-privacy-mask/scripts/shuiyuan-privacy-mask/README.md",
+  "codeSyncUrl": "https://raw.githubusercontent.com/yingyx/sjtu-user-scripts/release/shuiyuan-privacy-mask/scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js",
+  "additionalInfoSyncUrl": "https://raw.githubusercontent.com/yingyx/sjtu-user-scripts/release/shuiyuan-privacy-mask/scripts/shuiyuan-privacy-mask/README.md",
   "changelog": "CHANGELOG.md"
 }
