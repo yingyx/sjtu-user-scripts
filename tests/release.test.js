@@ -134,8 +134,8 @@ test("CI gates independent automatic promotions behind one protected approval", 
   assert.match(workflow, /vars\.USERSCRIPT_AUTO_RELEASE == 'enabled'/);
   assert.match(workflow, /environment:\s+name: userscript-production/);
   assert.equal((workflow.match(/strategy:\s+fail-fast: false\s+matrix:/g) || []).length, 2);
-  assert.equal((workflow.match(/uses: \.\/\.github\/workflows\/release\.yml/g) || []).length, 2);
-  assert.match(workflow, /plan-releases:[\s\S]*?dry_run: true/);
+  assert.equal((workflow.match(/uses: \.\/\.github\/workflows\/release\.yml/g) || []).length, 1);
+  assert.match(workflow, /plan-releases:[\s\S]*?permissions:\s+contents: read[\s\S]*?--dry-run/);
   assert.match(workflow, /approve-releases:[\s\S]*?- plan-releases/);
   assert.match(workflow, /always\(\) && needs\.detect-releases\.outputs\.has_releases == 'true'/);
   assert.match(workflow, /dry_run: false/);
