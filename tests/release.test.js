@@ -103,7 +103,8 @@ test("release output files contain only the selected version notes", () => {
     fs.writeFileSync(summaryPath, formatSummary(plan), "utf8");
     fs.writeFileSync(notesPath, `${plan.releaseNotes}\n`, "utf8");
     assert.match(fs.readFileSync(outputPath, "utf8"), /^dry_run=true$/m);
-    assert.match(fs.readFileSync(summaryPath, "utf8"), /Not configured/);
+    assert.match(fs.readFileSync(summaryPath, "utf8"), /GreasyFork ID \| 591032/);
+    assert.match(formatSummary({ ...plan, greasyForkId: null }), /Not configured/);
     assert.doesNotMatch(fs.readFileSync(notesPath, "utf8"), /^##\s+/m);
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });

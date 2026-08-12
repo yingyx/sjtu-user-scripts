@@ -20,7 +20,7 @@ https://shuiyuan.sjtu.edu.cn/*
 ## Installation
 
 1. Install a userscript manager, such as Tampermonkey.
-2. Install this script from Greasy Fork.
+2. [Install this script from Greasy Fork](https://greasyfork.org/scripts/591032-shuiyuan-privacy-mask).
 3. Open Shuiyuan while logged in:
 
 ```text

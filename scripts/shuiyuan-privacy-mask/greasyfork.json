@@ -1,6 +1,6 @@
 {
   "scriptId": "shuiyuan-privacy-mask",
-  "greasyForkId": null,
+  "greasyForkId": 591032,
   "entry": "shuiyuan-privacy-mask.user.js",
   "releaseBranch": "release/shuiyuan-privacy-mask",
   "codeSyncUrl": "https://raw.githubusercontent.com/yingyx/sjtu-user-scripts/release/shuiyuan-privacy-mask/scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js",
