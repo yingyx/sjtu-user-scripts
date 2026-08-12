@@ -72,6 +72,8 @@ New scripts receive strict validation immediately. Existing scripts are migrated
 
 ## Release Workflow
 
-This repository supports multiple independent userscripts. Register each publishable script in `scripts.json`, keep per-script release notes in `scripts/<script-id>/CHANGELOG.md`, and publish through that script's `release/<script-id>` branch. The manual workflow defaults to a read-only dry run and promotes a validated version only from `main`.
+This repository supports multiple independent userscripts. Register each publishable script in `scripts.json`, keep per-script release notes in `scripts/<script-id>/CHANGELOG.md`, and publish through that script's `release/<script-id>` branch.
+
+Once repository administrators enable the protected release gate, a push to `main` detects version advances, creates a dry-run plan for each affected script, waits for one `userscript-production` approval, and promotes the approved scripts independently. The manual workflow remains available for first publication, dry runs, and recovery.
 
 See `docs/release.md` for the full CI/CD and GreasyFork synchronization workflow.

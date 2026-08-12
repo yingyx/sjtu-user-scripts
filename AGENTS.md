@@ -27,3 +27,5 @@ New scripts use `standardsVersion: 1` in `scripts.json` and receive strict valid
 ## Definition of done
 
 Code, metadata, README, CHANGELOG, privacy disclosures, and tests must agree. A generated scaffold is not a finished plugin. Leaving `TODO(userscript)`, overstating verification, or delivering only a code fragment is incomplete.
+
+When a published script's version is advanced and merged to `main`, CI may prepare a production release that still requires approval through the `userscript-production` environment. Do not bypass a failed automatic plan with a direct release; follow `docs/release.md`.

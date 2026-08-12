@@ -127,3 +127,18 @@ test("GitHub output and workflow preserve the release safety gates", () => {
   assert.match(workflow, /group: release-\$\{\{ inputs\.script_id \}\}/);
   assert.equal((workflow.match(/git push /g) || []).length, 1);
 });
+
+test("CI gates independent automatic promotions behind one protected approval", () => {
+  const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
+  const releaseWorkflow = fs.readFileSync(path.join(root, ".github", "workflows", "release.yml"), "utf8");
+  assert.match(workflow, /vars\.USERSCRIPT_AUTO_RELEASE == 'enabled'/);
+  assert.match(workflow, /environment:\s+name: userscript-production/);
+  assert.equal((workflow.match(/strategy:\s+fail-fast: false\s+matrix:/g) || []).length, 2);
+  assert.equal((workflow.match(/uses: \.\/\.github\/workflows\/release\.yml/g) || []).length, 2);
+  assert.match(workflow, /plan-releases:[\s\S]*?dry_run: true/);
+  assert.match(workflow, /approve-releases:[\s\S]*?- plan-releases/);
+  assert.match(workflow, /always\(\) && needs\.detect-releases\.outputs\.has_releases == 'true'/);
+  assert.match(workflow, /dry_run: false/);
+  assert.match(workflow, /permissions:\s+contents: write/);
+  assert.match(releaseWorkflow, /workflow_call:/);
+});

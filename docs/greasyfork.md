@@ -60,6 +60,8 @@ release/<script-id>
 
 GreasyFork syncs from that branch. `main` can contain development changes without immediately publishing them to users.
 
-To publish, run the GitHub Actions `Release userscript` workflow with the script ID and expected `@version`. Leave `dry_run` enabled first. The dry run validates all scripts and tooling tests, checks the remote release branch and tag, and does not change GitHub or GreasyFork state. After inspection, run it again with `dry_run` disabled. The workflow atomically updates the target release branch and per-script tag, then optionally creates a GitHub Release.
+For a script's first publication, run the GitHub Actions `Release userscript` workflow with the script ID and expected `@version`. Leave `dry_run` enabled first. The dry run validates all scripts and tooling tests, checks the remote release branch and tag, and does not change GitHub or GreasyFork state. After inspection, run it again with `dry_run` disabled, then create the GreasyFork page and record its numeric ID.
+
+After the script has a GreasyFork ID and the protected semi-automatic gate is enabled, merging an advanced version to `main` generates the same dry-run plan automatically. Approving the `userscript-production` environment once promotes all detected scripts independently. The manual workflow remains the recovery path.
 
 A successful release-branch push only makes the configured source available and prompts the webhook check. Confirm the resulting version on GreasyFork separately; the workflow does not treat third-party synchronization latency as a successful Git operation.

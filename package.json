@@ -12,6 +12,7 @@
   },
   "scripts": {
     "new": "node tools/create-userscript.js",
+    "release:detect": "node tools/detect-releases.js",
     "release:plan": "node tools/plan-release.js",
     "validate": "node tools/validate-userscripts.js",
     "test": "node --test tests/*.test.js",

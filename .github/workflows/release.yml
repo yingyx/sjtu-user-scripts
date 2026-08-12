@@ -1,6 +1,24 @@
 name: Release userscript
 
 on:
+  workflow_call:
+    inputs:
+      script_id:
+        description: Script ID from scripts.json
+        required: true
+        type: string
+      version:
+        description: Version expected in the userscript @version field
+        required: true
+        type: string
+      dry_run:
+        description: Validate and inspect remote state without changing refs or releases
+        required: true
+        type: boolean
+      create_github_release:
+        description: Create a GitHub Release with the .user.js artifact
+        required: true
+        type: boolean
   workflow_dispatch:
     inputs:
       script_id:

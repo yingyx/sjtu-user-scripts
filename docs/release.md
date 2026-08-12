@@ -60,6 +60,37 @@ npm run release:plan -- --script-id sjtu-course-assistant-plus --version 0.8.2 -
 
 The plan is derived from `scripts.json`, userscript metadata, the matching CHANGELOG section, and `greasyfork.json`. It includes the exact release branch, tag, GreasyFork source URL, and SHA-256 digest of the `.user.js` artifact.
 
+## Semi-Automatic Publishing
+
+After the production gate is enabled, each push to `main` follows this path:
+
+```text
+CI check
+  -> detect published scripts whose @version advanced
+  -> run an independent dry-run plan for every candidate
+  -> wait once for userscript-production approval
+  -> promote candidates in an independent fail-fast:false matrix
+  -> let the repository GreasyFork webhook request synchronization
+```
+
+Detection compares each current `.user.js` with its release branch. It fails closed when published content changed without a version increment, a version decreased, or a release branch cannot be fast-forwarded. Scripts whose `greasyForkId` is still `null` remain manual because their public GreasyFork page must be created first.
+
+The approval job cannot write repository contents. Only the post-approval promotion matrix receives `contents: write`, and every matrix entry reuses the same validation, remote preflight, atomic branch/tag push, and per-script concurrency guard as the manual workflow. `fail-fast: false` prevents one promotion failure from cancelling the other scripts.
+
+### One-Time GitHub Configuration
+
+Keep automatic publishing disabled until all protection rules are saved:
+
+1. In repository **Settings -> Environments**, create `userscript-production`.
+2. Add at least one required reviewer. If the repository owner will trigger pushes and approve them, leave **Prevent self-review** disabled; enabling it requires a different reviewer.
+3. Restrict deployment branches to `main`.
+4. Do not add GreasyFork credentials or secrets to the environment.
+5. In **Settings -> Secrets and variables -> Actions -> Variables**, create `USERSCRIPT_AUTO_RELEASE` with value `enabled`.
+
+The repository variable is an explicit rollout switch. Without the exact value `enabled`, normal CI runs but release detection, approval, and promotion remain skipped. Disable the system immediately by deleting the variable or changing its value.
+
+Review the generated dry-run jobs before selecting **Review deployments -> Approve and deploy**. The gate appears only after every plan finishes, including when one plan failed. Reject the batch when a failure indicates a repository-wide problem; otherwise approval lets the independent promotion matrix retry each candidate, where an invalid script fails without cancelling valid scripts. One approval covers all candidates in that workflow run. Rejecting the environment stops the batch before any release ref changes.
+
 ## Greasy Fork Setup
 
 Create one Greasy Fork script page per userscript.
@@ -80,7 +111,9 @@ Configure the Greasy Fork webhook for the repository. The webhook only causes Gr
 
 Do not add GitHub Raw `@downloadURL` or `@updateURL` metadata when Greasy Fork is the official distribution source. Greasy Fork rewrites those fields for installed scripts.
 
-## Publishing A Script
+## Manual Publishing And Recovery
+
+Use the manual workflow for first publication, deliberate dry runs, recovery, or when the semi-automatic switch is disabled.
 
 1. Update the target script's `.user.js` metadata `@version` and matching top CHANGELOG entry.
 2. Run `npm run check`, merge the change to `main`, and wait for CI.
@@ -89,6 +122,8 @@ Do not add GitHub Raw `@downloadURL` or `@updateURL` metadata when Greasy Fork i
 5. Inspect the release plan and remote preflight in the workflow summary.
 6. Run the workflow again with the same inputs and `dry_run` disabled. Select `create_github_release` only when a GitHub Release is wanted.
 7. Confirm the release branch and tag, then verify the resulting version on GreasyFork.
+
+For normal updates after semi-automatic publishing is enabled, steps 3-6 are replaced by reviewing the automatically generated plans and approving `userscript-production` once.
 
 The workflow refuses non-`main` refs, unknown script IDs, metadata/version mismatches, existing tags, non-fast-forward release branches, and versions that do not advance the version already present on the release branch. It runs the full repository check before reading remote state.
 
@@ -122,6 +157,10 @@ The release branch and tag may already be valid because GitHub Release creation 
 ### GreasyFork does not update
 
 Do not move the tag or republish the same version. Confirm that the release-branch Raw URLs in `greasyfork.json` are reachable, verify the GreasyFork source-sync and webhook settings, and ask GreasyFork to check the configured source again. GitHub ref promotion and third-party synchronization are deliberately verified separately.
+
+### Automatic detection fails
+
+Do not bypass the failure with a direct release. A same-version content error means the published `.user.js` changed without the required version and CHANGELOG update. A non-fast-forward error means the release history needs explicit inspection. Correct the cause on `main`, keep the repository variable disabled if necessary, and rerun normal CI before approving another release.
 
 ### Published code must be reverted
 

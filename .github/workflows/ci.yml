@@ -29,3 +29,84 @@ jobs:
 
       - name: Validate repository and run tooling tests
         run: npm run check
+
+  detect-releases:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.USERSCRIPT_AUTO_RELEASE == 'enabled' }}
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      has_releases: ${{ steps.detect.outputs.has_releases }}
+      matrix: ${{ steps.detect.outputs.matrix }}
+      release_count: ${{ steps.detect.outputs.release_count }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install tooling dependencies
+        run: npm ci
+
+      - name: Fetch release branches and tags
+        run: git fetch origin --prune --tags
+
+      - name: Detect publishable version changes
+        id: detect
+        run: npm run release:detect -- --source-ref "$GITHUB_REF" --commit-sha "$GITHUB_SHA"
+
+  approve-releases:
+    if: ${{ always() && needs.detect-releases.outputs.has_releases == 'true' }}
+    needs:
+      - detect-releases
+      - plan-releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: userscript-production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Record production approval
+        env:
+          PLAN_RESULT: ${{ needs.plan-releases.result }}
+          RELEASE_COUNT: ${{ needs.detect-releases.outputs.release_count }}
+        run: echo "Approved $RELEASE_COUNT userscript release candidate(s) after plans finished with result $PLAN_RESULT."
+
+  plan-releases:
+    if: ${{ needs.detect-releases.outputs.has_releases == 'true' }}
+    needs: detect-releases
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect-releases.outputs.matrix) }}
+    uses: ./.github/workflows/release.yml
+    with:
+      script_id: ${{ matrix.script_id }}
+      version: ${{ matrix.version }}
+      dry_run: true
+      create_github_release: false
+    permissions:
+      contents: read
+
+  promote-releases:
+    if: ${{ needs.detect-releases.outputs.has_releases == 'true' }}
+    needs:
+      - detect-releases
+      - approve-releases
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect-releases.outputs.matrix) }}
+    uses: ./.github/workflows/release.yml
+    with:
+      script_id: ${{ matrix.script_id }}
+      version: ${{ matrix.version }}
+      dry_run: false
+      create_github_release: false
+    permissions:
+      contents: write
