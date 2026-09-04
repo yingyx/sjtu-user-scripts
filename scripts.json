@@ -6,7 +6,11 @@
     "readme": "scripts/shuiyuan-deep-search/README.md",
     "changelog": "scripts/shuiyuan-deep-search/CHANGELOG.md",
     "releaseBranch": "release/shuiyuan-deep-search",
-    "standardsVersion": 1
+    "standardsVersion": 1,
+    "permissions": {
+      "allowWildcardConnect": true,
+      "reason": "Users explicitly configure arbitrary OpenAI-compatible API endpoints."
+    }
   },
   {
     "id": "shuiyuan-privacy-mask",

@@ -91,6 +91,16 @@ test("new scripts are strict while legacy scripts remain compatible", () => {
     );
     assert.deepEqual(validateRepository(temporaryRoot).errors, []);
 
+    const wildcardSource = implemented.replace("// @grant", "// @connect      *\n// @grant");
+    fs.writeFileSync(entryPath, wildcardSource, "utf8");
+    assert.ok(validateRepository(temporaryRoot).errors.some((error) => error.includes("wildcard @connect requires")));
+    generatedManifest[0].permissions = {
+      allowWildcardConnect: true,
+      reason: "Users explicitly configure arbitrary API endpoint hosts.",
+    };
+    fs.writeFileSync(path.join(temporaryRoot, "scripts.json"), `${JSON.stringify(generatedManifest, null, 2)}\n`, "utf8");
+    assert.deepEqual(validateRepository(temporaryRoot).errors, []);
+
     fs.writeFileSync(entryPath, implemented.replace("https://example.com/*", "*://*/*").replace(
       'document.documentElement.dataset.demoHelper = "enabled";',
       'eval("unsafe")',

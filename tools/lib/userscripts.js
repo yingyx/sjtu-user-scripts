@@ -111,8 +111,13 @@ function validateStrictScript(root, script, source, metadata) {
   }
   const grants = metadata.get("grant") || [];
   if (grants.includes("none") && grants.length !== 1) errors.push(`${expectedEntry}: @grant none cannot be combined with other grants.`);
+  const wildcardConnectApproved = script.permissions?.allowWildcardConnect === true
+    && typeof script.permissions.reason === "string"
+    && script.permissions.reason.trim().length >= 20;
   for (const connect of metadata.get("connect") || []) {
-    if (connect === "*") errors.push(`${expectedEntry}: wildcard @connect is not allowed.`);
+    if (connect === "*" && !wildcardConnectApproved) {
+      errors.push(`${expectedEntry}: wildcard @connect requires permissions.allowWildcardConnect and a documented reason.`);
+    }
   }
   for (const pattern of [...(metadata.get("match") || []), ...(metadata.get("include") || [])]) {
     if (/^\*:\/\/\*\//.test(pattern)) errors.push(`${expectedEntry}: global URL pattern ${pattern} is not allowed.`);

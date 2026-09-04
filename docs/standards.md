@@ -18,7 +18,7 @@ Every standards-version-1 script must declare `@name`, `@namespace`, `@version`,
 - Keep an existing script's primary `@name` and `@namespace` stable.
 - Use an explicit SPDX license identifier, or `UNLICENSED` when the repository grants no license. Do not infer or generate a copyright owner.
 - Do not add `@downloadURL` or `@updateURL` when GreasyFork is the distribution source.
-- Avoid global URL matches and wildcard network access.
+- Avoid global URL matches and wildcard network access. A script that must contact user-configured hosts may use `@connect *` only with explicit user approval and a `scripts.json` `permissions.allowWildcardConnect` exception containing a concrete reason; keep known/common `@connect` domains alongside it.
 - Use localized metadata keys when a script provides names or descriptions in multiple languages.
 
 ## Code and Security
