@@ -1,0 +1,9 @@
+{
+  "scriptId": "shuiyuan-deep-search",
+  "greasyForkId": null,
+  "entry": "shuiyuan-deep-search.user.js",
+  "releaseBranch": "release/shuiyuan-deep-search",
+  "codeSyncUrl": "https://raw.githubusercontent.com/yingyx/sjtu-user-scripts/release/shuiyuan-deep-search/scripts/shuiyuan-deep-search/shuiyuan-deep-search.user.js",
+  "additionalInfoSyncUrl": "https://raw.githubusercontent.com/yingyx/sjtu-user-scripts/release/shuiyuan-deep-search/scripts/shuiyuan-deep-search/README.md",
+  "changelog": "CHANGELOG.md"
+}

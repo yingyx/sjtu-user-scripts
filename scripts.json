@@ -1,15 +1,12 @@
 [
   {
-    "id": "sjtu-course-assistant-plus",
-    "name": "SJTU Course Assistant Plus",
-    "entry": "scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js",
-    "readme": "scripts/sjtu-course-assistant-plus/README.md",
-    "changelog": "scripts/sjtu-course-assistant-plus/CHANGELOG.md",
-    "standardsVersion": 1,
-    "releaseBranch": "release/sjtu-course-assistant-plus",
-    "compatibility": {
-      "disallowPrototypeArrayMethods": true
-    }
+    "id": "shuiyuan-deep-search",
+    "name": "Shuiyuan Deep Search",
+    "entry": "scripts/shuiyuan-deep-search/shuiyuan-deep-search.user.js",
+    "readme": "scripts/shuiyuan-deep-search/README.md",
+    "changelog": "scripts/shuiyuan-deep-search/CHANGELOG.md",
+    "releaseBranch": "release/shuiyuan-deep-search",
+    "standardsVersion": 1
   },
   {
     "id": "shuiyuan-privacy-mask",
@@ -19,6 +16,18 @@
     "changelog": "scripts/shuiyuan-privacy-mask/CHANGELOG.md",
     "standardsVersion": 1,
     "releaseBranch": "release/shuiyuan-privacy-mask",
+    "compatibility": {
+      "disallowPrototypeArrayMethods": true
+    }
+  },
+  {
+    "id": "sjtu-course-assistant-plus",
+    "name": "SJTU Course Assistant Plus",
+    "entry": "scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js",
+    "readme": "scripts/sjtu-course-assistant-plus/README.md",
+    "changelog": "scripts/sjtu-course-assistant-plus/CHANGELOG.md",
+    "standardsVersion": 1,
+    "releaseBranch": "release/sjtu-course-assistant-plus",
     "compatibility": {
       "disallowPrototypeArrayMethods": true
     }

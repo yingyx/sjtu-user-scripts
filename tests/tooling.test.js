@@ -28,7 +28,7 @@ test("SemVer comparison and changelog parsing are available for later migrations
 test("the current repository remains valid after the tooling refactor", () => {
   const result = validateRepository(path.join(__dirname, ".."));
   assert.deepEqual(result.errors, []);
-  assert.equal(result.scripts.length, 2);
+  assert.equal(result.scripts.length, 3);
 });
 
 test("Claude and Gemini adapters import the canonical instructions", () => {
