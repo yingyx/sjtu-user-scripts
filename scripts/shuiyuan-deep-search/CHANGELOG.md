@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.2
+
+- Normalized numeric-string topic IDs, rejected invalid IDs explicitly, and preserved earlier relevant results across recovery rounds.
+- Added independent core-term searches, bounded full-text probes when snippet screening rejects every hit, and accurate empty-search diagnostics.
+- Reduced repeated prompts, combined relevance screening with recovery planning, and bounded screening snippets and follow-up context while preserving source evidence.
+- Made noun searches default to useful information and community experience, reserving identity analysis for explicit questions or material ambiguity.
+- Separated information goals and content angles from retrieval queries across planning, recovery, evidence review, reports, and follow-ups.
+- Added relevance screening before reading; sparse-result recovery now counts relevant unread topics instead of raw hits.
+- Kept likely name corrections brief and focused reports and suggested questions on substantive information, with source-backed facts and applicable dates.
+- Moved the launcher to the left of native search and expanded the icon artwork to fill its view box.
+- Kept button and icon dimensions synchronized through resize and header replacement, with explicit box sizing.
+- Added hypothesis-aware name, alias, and category expansion to initial and follow-up planning.
+- Added at most two recovery rounds for sparse searches using hit counts and candidate snippets, with query deduplication and existing-topic exclusion.
+- Required source-backed name disambiguation and documented the additional search context sent to the configured LLM.
+
 ## 0.2.0
 
 - Added evidence-aware supplemental searches during follow-up conversations.
