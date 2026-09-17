@@ -2,9 +2,9 @@
 // @name         交大选课助手+
 // @name:en      SJTU Course Assistant Plus
 // @namespace    https://course.sjtu.plus/
-// @version      0.8.2
-// @description  增强交大选课页面，使用 DeepSeek 对选课社区评价进行总结，并支持自定义维度。
-// @description:en  Enhance SJTU course selection with time-conflict filtering and on-demand jCourse + DeepSeek review summaries.
+// @version      0.9.0
+// @description  增强交大选课页面，支持冲突筛选、选课社区评价和可管理的 LLM 总结来源。
+// @description:en  Enhance SJTU course selection with conflict filtering, jCourse reviews, and manageable LLM summary providers.
 // @author       Codex
 // @license      UNLICENSED
 // @supportURL   https://github.com/yingyx/sjtu-user-scripts/issues
@@ -15,6 +15,7 @@
 // @run-at       document-idle
 // @connect      course.sjtu.plus
 // @connect      api.deepseek.com
+// @connect      *
 // ==/UserScript==
 
 (function () {
@@ -34,13 +35,13 @@
     { type: "yesno", label: "是否有互动", note: "" },
     { type: "yesno", label: "是否有考试", note: "如果没有人提到评分标准中包含考试，则认为没有" },
   ];
-  const PROVIDERS = {
-    deepseek: {
-      label: "DeepSeek",
-      endpoint: "https://api.deepseek.com/chat/completions",
-      modelsEndpoint: "https://api.deepseek.com/models",
-      defaultModel: "deepseek-v4-flash",
-    },
+  const BUILT_IN_PROVIDER = {
+    id: "deepseek",
+    label: "DeepSeek",
+    endpoint: "https://api.deepseek.com/chat/completions",
+    key: "",
+    model: "deepseek-v4-flash",
+    builtIn: true,
   };
 
   const state = {
@@ -52,9 +53,9 @@
     jcourseCache: loadJson(JCACHE_KEY, {}),
     llmCache: loadJson(LCACHE_KEY, {}),
     activeRequests: new Map(),
-    deepseekModels: [],
     errorCount: 0,
     zeroDomReported: false,
+    noticeTimer: 0,
   };
 
   injectStyles();
@@ -88,19 +89,84 @@
 
   function loadSettings() {
     const saved = loadJson(SETTINGS_KEY, {});
-    const providerModels = saved.providerModels && typeof saved.providerModels === "object" ? saved.providerModels : {};
-    const providerKeys = saved.providerKeys && typeof saved.providerKeys === "object" ? saved.providerKeys : {};
-    const savedDeepSeekModel = typeof providerModels.deepseek === "string" && providerModels.deepseek.trim() && providerModels.deepseek.trim() !== "deepseek-chat"
-      ? providerModels.deepseek.trim()
-      : PROVIDERS.deepseek.defaultModel;
+    const providers = normalizeProviderSettings(saved);
+    const requestedActive = normalizeProviderId(saved.activeProviderId || (Array.isArray(saved.enabledProviders) ? saved.enabledProviders[0] : ""));
+    let activeProviderId = providers[0].id;
+    for (let i = 0; i < providers.length; i += 1) {
+      if (providers[i].id === requestedActive) activeProviderId = requestedActive;
+    }
     return {
       hideConflicts: Boolean(saved.hideConflicts),
-      enabledProviders: Array.isArray(saved.enabledProviders) && saved.enabledProviders.length ? saved.enabledProviders : ["deepseek"],
-      providerKeys: { deepseek: typeof providerKeys.deepseek === "string" ? providerKeys.deepseek : "" },
-      providerModels: { deepseek: savedDeepSeekModel },
+      activeProviderId,
+      providers,
       jcourseApiKey: typeof saved.jcourseApiKey === "string" ? saved.jcourseApiKey : "",
       dimensions: normalizeDimensionSettings(saved.dimensions),
     };
+  }
+
+  function normalizeProviderSettings(saved) {
+    const providerKeys = saved.providerKeys && typeof saved.providerKeys === "object" ? saved.providerKeys : {};
+    const providerModels = saved.providerModels && typeof saved.providerModels === "object" ? saved.providerModels : {};
+    const deepSeek = cloneProvider(BUILT_IN_PROVIDER);
+    deepSeek.key = typeof providerKeys.deepseek === "string" ? providerKeys.deepseek : "";
+    const oldModel = typeof providerModels.deepseek === "string" ? providerModels.deepseek.trim() : "";
+    if (oldModel && oldModel !== "deepseek-chat") deepSeek.model = oldModel;
+    const source = Array.isArray(saved.providers) ? saved.providers : [];
+    const out = [];
+    for (let i = 0; i < source.length; i += 1) {
+      const normalized = normalizeProvider(source[i], i);
+      if (!normalized) continue;
+      if (normalized.id === "deepseek") {
+        deepSeek.key = normalized.key;
+        deepSeek.model = normalized.model || deepSeek.model;
+      } else if (!providerIdExists(out, normalized.id)) {
+        out.push(normalized);
+      }
+    }
+    return [deepSeek].concat(out);
+  }
+
+  function normalizeProvider(value, index) {
+    if (!value || typeof value !== "object") return null;
+    const label = normalizeText(value.label || value.name || "").slice(0, 40);
+    const endpoint = normalizeText(value.endpoint || "");
+    if (!label || !endpoint) return null;
+    const rawId = normalizeProviderId(value.id || label) || `custom-${index + 1}`;
+    return {
+      id: rawId === "deepseek" ? "deepseek" : uniqueProviderId(rawId),
+      label,
+      endpoint,
+      key: typeof value.key === "string" ? value.key : "",
+      model: normalizeText(value.model || ""),
+      builtIn: rawId === "deepseek",
+    };
+  }
+
+  function cloneProvider(provider) {
+    return {
+      id: provider.id,
+      label: provider.label,
+      endpoint: provider.endpoint,
+      key: provider.key || "",
+      model: provider.model || "",
+      builtIn: Boolean(provider.builtIn),
+    };
+  }
+
+  function normalizeProviderId(value) {
+    return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  }
+
+  function uniqueProviderId(base) {
+    const normalized = normalizeProviderId(base) || "custom";
+    return normalized === "deepseek" ? `custom-${Date.now()}` : normalized;
+  }
+
+  function providerIdExists(providers, id) {
+    for (let i = 0; i < providers.length; i += 1) {
+      if (providers[i].id === id) return true;
+    }
+    return false;
   }
 
   function cloneDefaultDimensions() {
@@ -213,6 +279,13 @@
         color: #23527c;
         text-decoration: none;
       }
+      .jcp-community-link::after {
+        content: "↗";
+        display: inline-block;
+        margin-left: 4px;
+        font-size: 11px;
+        transform: translateY(-1px);
+      }
       .jcp-toolbar button:disabled, .jcp-summary-btn:disabled {
         cursor: default;
         opacity: 0.65;
@@ -280,73 +353,121 @@
         margin-left: 0;
         pointer-events: auto;
       }
-      .jcp-heading-summary-line {
+      .jcp-heading-summary-line,
+      .jcp-row-summary-card {
         clear: both;
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
-        justify-content: space-between;
         width: 100%;
-        margin-top: 5px;
-        padding-right: 4px;
+        margin-top: 8px;
+        padding: 10px 12px;
         box-sizing: border-box;
-        font-size: 12px;
-        line-height: 1.45;
+        border: 1px solid #d8e7d3;
+        border-left: 4px solid #5cb85c;
+        border-radius: 5px;
+        background: #fbfef9;
+        color: #334533;
+        font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 1.65;
+        text-align: left;
       }
-      .jcp-heading-summary-line .jcp-chip-label {
-        color: #666;
-        margin-right: 2px;
+      .jcp-summary-card * { box-sizing: border-box; }
+      .jcp-summary-card-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        color: #356635;
       }
-      .jcp-heading-summary-main {
-        min-width: 0;
-        flex: 1 1 auto;
-        line-height: 1.7;
+      .jcp-summary-card-head strong { font-size: 13px; }
+      .jcp-summary-context { color: #71806d; font-weight: 400; }
+      .jcp-summary-state {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 28px;
+        color: #677565;
       }
-      .jcp-heading-summary-extra {
-        flex: 0 0 auto;
-        max-width: 45%;
-        text-align: right;
-        line-height: 1.7;
+      .jcp-summary-state.jcp-summary-error { color: #a94442; }
+      .jcp-summary-loading-dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        min-width: 27px;
       }
-      .jcp-heading-summary-line .jcp-badge {
-        margin-left: 0;
-        margin-right: 6px;
+      .jcp-summary-loading-dots span {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #69a968;
+        animation: jcp-pulse 1.1s ease-in-out infinite;
       }
-      .jcp-heading-summary-extra .jcp-badge {
-        margin-right: 0;
-        margin-left: 6px;
+      .jcp-summary-loading-dots span:nth-child(2) { animation-delay: 0.14s; }
+      .jcp-summary-loading-dots span:nth-child(3) { animation-delay: 0.28s; }
+      @keyframes jcp-pulse { 0%, 60%, 100% { opacity: 0.28; } 30% { opacity: 1; } }
+      .jcp-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 10px;
       }
-      .jcp-heading-summary-line .jcp-summary {
-        border-color: transparent;
-        background: transparent;
-        color: #2b542c;
-        padding: 0;
-      }
-      .jcp-row-result {
+      .jcp-summary-item {
         display: block;
-        margin-top: 4px;
-        white-space: normal;
+        min-width: 0;
+        min-height: 60px;
+        padding: 10px 11px;
+        border: 1px solid #deecd9;
+        border-radius: 5px;
+        background: #f1f8ef;
       }
-      .jcp-errors {
-        flex-basis: 100%;
-        display: none;
-        border-top: 1px solid #e6c9c9;
-        margin-top: 6px;
-        padding-top: 6px;
-        color: #a94442;
-      }
-      .jcp-errors.jcp-visible { display: block; }
-      .jcp-errors pre {
-        margin: 4px 0 0;
-        white-space: pre-wrap;
-        word-break: break-word;
-        max-height: 120px;
-        overflow: auto;
+      .jcp-summary-item-label {
+        display: block;
+        color: #687864;
         font-size: 12px;
-        background: transparent;
-        border: 0;
-        padding: 0;
+        line-height: 1.4;
       }
+      .jcp-summary-item-value {
+        display: block;
+        min-width: 0;
+        margin-top: 4px;
+        color: #274d27;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1.65;
+        overflow-wrap: anywhere;
+      }
+      .jcp-summary-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 8px;
+      }
+      .jcp-summary-meta .jcp-badge { margin: 0; background: #fff; }
+      .jcp-row-summary-wrap {
+        display: grid;
+        grid-template-columns: repeat(2, 78px);
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        margin-top: 4px;
+      }
+      .jcp-action-cell { min-width: 176px; }
+      .jcp-row-summary-wrap .jcp-community-link,
+      .jcp-row-summary-wrap .jcp-summary-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 78px;
+        min-height: 28px;
+        margin: 0;
+        padding: 4px 7px;
+        white-space: nowrap;
+      }
+      tr.jcp-row-summary-detail > td {
+        padding: 0 12px 12px !important;
+        border-top: 0 !important;
+        background: #f8fbfd;
+      }
+      .jcp-row-summary-card { margin-top: 0; }
       .jcp-panel-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.2); z-index: 9998; }
       .jcp-panel {
         position: fixed;
@@ -420,6 +541,108 @@
       .jcp-dim-tools { margin-top: 6px; }
       .jcp-panel .jcp-actions { margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
       .jcp-muted { color: #777; }
+      .jcp-toolbar {
+        position: relative;
+        border-color: #d9e4ec;
+        border-left: 4px solid #337ab7;
+        border-radius: 5px;
+        background: linear-gradient(135deg, #fbfdff 0%, #f3f8fc 100%);
+        box-shadow: 0 1px 3px rgba(34, 78, 112, 0.08);
+        padding: 9px 12px;
+      }
+      .jcp-toolbar-brand { display: inline-flex; align-items: center; gap: 7px; color: #245269; }
+      .jcp-toolbar-mark {
+        display: inline-flex;
+        width: 20px;
+        height: 20px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: #337ab7;
+        color: #fff;
+        font-size: 11px;
+      }
+      .jcp-toolbar-spacer { flex: 1 1 auto; }
+      .jcp-toolbar-toggle { margin: 0; font-weight: 400; display: inline-flex; align-items: center; gap: 4px; }
+      .jcp-status { color: #6a7c89; }
+      .jcp-notice {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 10001;
+        max-width: min(420px, calc(100vw - 48px));
+        padding: 10px 13px;
+        border: 1px solid #bce8f1;
+        border-radius: 5px;
+        background: #f2fbff;
+        color: #245269;
+        box-shadow: 0 5px 18px rgba(0,0,0,0.16);
+        font-size: 13px;
+      }
+      .jcp-notice-error { border-color: #ebccd1; background: #fff7f7; color: #a94442; }
+      .jcp-panel-mask { background: rgba(23, 38, 50, 0.26); backdrop-filter: blur(1px); }
+      .jcp-panel {
+        top: 5vh;
+        right: max(24px, calc((100vw - 1040px) / 2));
+        width: min(760px, calc(100vw - 48px));
+        max-height: 90vh;
+        overflow: auto;
+        border: 0;
+        border-radius: 8px;
+        box-shadow: 0 12px 38px rgba(18, 48, 68, 0.25);
+        padding: 0;
+      }
+      .jcp-panel-header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 13px 16px;
+        border-bottom: 1px solid #dbe5ec;
+        background: #f7fbfe;
+      }
+      .jcp-panel-header h4 { margin: 0; color: #245269; }
+      .jcp-panel-body { padding: 4px 16px 16px; }
+      .jcp-section { margin-top: 14px; padding-top: 2px; }
+      .jcp-section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .jcp-section-title h5 { margin: 0; font-size: 14px; color: #333; }
+      .jcp-provider-list { display: grid; gap: 9px; margin-top: 8px; }
+      .jcp-provider-card {
+        border: 1px solid #d8e1e8;
+        border-radius: 6px;
+        background: #fff;
+        padding: 10px;
+      }
+      .jcp-provider-card.jcp-active-provider { border-color: #7eb7dc; box-shadow: 0 0 0 2px rgba(51,122,183,0.08); }
+      .jcp-provider-head { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+      .jcp-provider-head strong { flex: 1 1 auto; color: #245269; }
+      .jcp-provider-tag { padding: 1px 5px; border-radius: 9px; background: #eef6fb; color: #31708f; font-size: 11px; }
+      .jcp-provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; }
+      .jcp-provider-grid label { margin: 0; font-size: 12px; font-weight: 500; color: #667782; }
+      .jcp-provider-grid input { margin-top: 3px; }
+      .jcp-provider-endpoint,
+      .jcp-provider-model-field { min-width: 0; }
+      .jcp-panel-footer {
+        position: sticky;
+        bottom: 0;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 11px 16px;
+        border-top: 1px solid #dbe5ec;
+        background: #fff;
+      }
+      .jcp-panel-footer .jcp-actions { margin: 0; }
+      .jcp-icon-close { border: 0 !important; background: transparent !important; font-size: 18px !important; color: #71808a !important; }
+      @media (max-width: 760px) {
+        .jcp-toolbar-spacer { display: none; }
+        .panel-heading.kc_head { padding-right: 12px; }
+        .jcp-heading-right { position: static; width: auto; justify-content: flex-start; margin-top: 6px; }
+        .jcp-provider-grid { grid-template-columns: 1fr; }
+        .jcp-summary-grid { grid-template-columns: 1fr; }
+      }
     `;
     document.documentElement.appendChild(style);
   }
@@ -429,16 +652,15 @@
     const toolbar = document.createElement("div");
     toolbar.className = "jcp-toolbar";
     toolbar.innerHTML = `
-      <strong>交大选课助手+（SJTU Course Assistant Plus）</strong>
+      <strong class="jcp-toolbar-brand"><span class="jcp-toolbar-mark">+</span>交大选课助手+</strong>
       <span class="jcp-muted jcp-status">准备扫描课程</span>
-      <label style="margin:0; font-weight:400;">
+      <span class="jcp-toolbar-spacer"></span>
+      <label class="jcp-toolbar-toggle">
         <input type="checkbox" class="jcp-hide-toggle">
-        隐藏冲突课程
+        隐藏冲突
       </label>
       <button type="button" class="jcp-primary jcp-rescan">重新扫描</button>
       <button type="button" class="jcp-settings">设置</button>
-      <button type="button" class="jcp-clear-errors">清除错误</button>
-      <div class="jcp-errors"><strong>错误</strong><pre></pre></div>
     `;
     const target = document.querySelector("#searchBox") || document.querySelector("#contentBox") || document.querySelector(".tjxk_list") || document.body;
     if (target === document.body) {
@@ -454,7 +676,6 @@
     });
     toolbar.querySelector(".jcp-rescan").addEventListener("click", () => scanNow());
     toolbar.querySelector(".jcp-settings").addEventListener("click", openSettingsPanel);
-    toolbar.querySelector(".jcp-clear-errors").addEventListener("click", clearErrors);
   }
 
   function setStatus(text) {
@@ -462,24 +683,32 @@
     if (node) node.textContent = text;
   }
 
-  function reportError(message, detail) {
+  function reportError(message, detail, options = {}) {
     state.errorCount += 1;
-    const box = document.querySelector(".jcp-errors");
-    const pre = box && box.querySelector("pre");
-    if (!box || !pre) return;
-    const time = new Date().toLocaleTimeString();
-    const detailText = detail ? `\n${String(detail).slice(0, 1000)}` : "";
-    pre.textContent = `[${time}] ${message}${detailText}\n\n${pre.textContent}`.slice(0, 5000);
-    box.classList.add("jcp-visible");
+    const detailText = detail ? `：${friendlyErrorText(detail)}` : "";
+    console.warn(`[交大选课助手+] ${message}${detailText}`);
+    if (options.silent) return;
+    showNotice(`${message}${detailText}`, "error");
   }
 
-  function clearErrors() {
-    state.errorCount = 0;
-    const box = document.querySelector(".jcp-errors");
-    if (!box) return;
-    const pre = box.querySelector("pre");
-    if (pre) pre.textContent = "";
-    box.classList.remove("jcp-visible");
+  function showNotice(message, type) {
+    clearTimeout(state.noticeTimer);
+    removeNodes(document.querySelectorAll(".jcp-notice"));
+    const notice = document.createElement("div");
+    notice.className = `jcp-notice${type === "error" ? " jcp-notice-error" : ""}`;
+    notice.textContent = message;
+    document.body.appendChild(notice);
+    state.noticeTimer = window.setTimeout(() => notice.remove(), type === "error" ? 6000 : 2800);
+  }
+
+  function friendlyErrorText(detail) {
+    const text = normalizeText(detail && detail.message ? detail.message : detail);
+    if (/401|403|unauthorized|forbidden/i.test(text)) return "认证失败，请检查 API Key";
+    if (/429|rate.?limit/i.test(text)) return "请求过于频繁，请稍后再试";
+    if (/timeout|超时/i.test(text)) return "请求超时，请稍后重试";
+    if (/network|网络/i.test(text)) return "网络连接失败";
+    if (/请求失败\s*5\d\d/.test(text)) return "服务暂时不可用";
+    return text.replace(/请求失败\s*\d+\s*:\s*[\s\S]*/i, "服务请求失败").slice(0, 140);
   }
 
   function openSettingsPanel() {
@@ -489,61 +718,83 @@
     const panel = document.createElement("div");
     panel.className = "jcp-panel";
     panel.innerHTML = `
-      <h4>SJTU Course Plus 设置</h4>
-      <label>LLM 来源</label>
-      <label style="font-weight:400; margin-top:4px;">
-        <input type="checkbox" class="jcp-provider" value="deepseek" checked disabled>
-        DeepSeek（当前内置）
-      </label>
-      <label>DeepSeek API Key</label>
-      <input type="password" class="jcp-key-deepseek" placeholder="sk-..." value="${escapeAttr(state.settings.providerKeys.deepseek)}">
-      <label>DeepSeek Model</label>
-      <div class="jcp-model-row">
-        <select class="jcp-model-deepseek">${deepSeekModelOptionsHtml(state.settings.providerModels.deepseek)}</select>
-        <button type="button" class="jcp-refresh-models">刷新模型</button>
+      <div class="jcp-panel-header">
+        <h4>交大选课助手+ 设置</h4>
+        <button type="button" class="jcp-icon-close jcp-cancel" title="关闭" aria-label="关闭">×</button>
       </div>
-      <p class="jcp-muted jcp-model-status">配置 DeepSeek API Key 后可刷新模型列表。</p>
-      <label>jCourse API Key</label>
-      <input type="password" class="jcp-key-jcourse" placeholder="可选；用于 Bearer 认证访问 jCourse API" value="${escapeAttr(state.settings.jcourseApiKey)}">
-      <label>总结维度</label>
-      <table class="jcp-dim-table">
-        <thead>
-          <tr>
-            <th class="jcp-dim-type-cell">类型</th>
-            <th>维度</th>
-            <th>备注</th>
-            <th class="jcp-dim-action-cell">操作</th>
-          </tr>
-        </thead>
-        <tbody>${dimensionsToTableRowsHtml(state.settings.dimensions)}</tbody>
-      </table>
-      <div class="jcp-dim-tools">
-        <button type="button" class="jcp-add-dim">添加维度</button>
+      <div class="jcp-panel-body">
+        <section class="jcp-section">
+          <div class="jcp-section-title">
+            <h5>LLM 来源</h5>
+            <button type="button" class="jcp-add-provider">添加来源</button>
+          </div>
+          <p class="jcp-muted">选择一个来源生成评价总结。DeepSeek 为内置来源；其他来源需兼容 OpenAI Chat Completions API。</p>
+          <div class="jcp-provider-list">${providerCardsHtml(state.settings.providers, state.settings.activeProviderId)}</div>
+        </section>
+        <section class="jcp-section">
+          <h5>jCourse</h5>
+          <label>jCourse API Key（可选）</label>
+          <input type="password" class="jcp-key-jcourse" placeholder="用于 Bearer 认证访问 jCourse API" value="${escapeAttr(state.settings.jcourseApiKey)}">
+        </section>
+        <section class="jcp-section">
+          <div class="jcp-section-title"><h5>总结维度</h5><button type="button" class="jcp-add-dim">添加维度</button></div>
+          <table class="jcp-dim-table">
+            <thead>
+              <tr><th class="jcp-dim-type-cell">类型</th><th>维度</th><th>备注</th><th class="jcp-dim-action-cell">操作</th></tr>
+            </thead>
+            <tbody>${dimensionsToTableRowsHtml(state.settings.dimensions)}</tbody>
+          </table>
+          <p class="jcp-muted">“是否”输出 是/否/未知；“开放”输出 20 字内短语。备注会作为额外要求发送给 LLM。</p>
+        </section>
+        <section class="jcp-section">
+          <label style="font-weight:400;">
+            <input type="checkbox" class="jcp-hide-conflicts" ${state.settings.hideConflicts ? "checked" : ""}>
+            隐藏与已选课冲突的教学班/课程
+          </label>
+          <p class="jcp-muted">脚本仅在你点击社区或总结按钮时发起网络请求，不会在扫描课程时自动调用外部服务。</p>
+        </section>
       </div>
-      <p class="jcp-muted">“是否”输出 是/否/未知，可带括号解释；“开放”输出 20 字内短语。备注会作为该维度的额外要求发送给 LLM。</p>
-      <label style="font-weight:400;">
-        <input type="checkbox" class="jcp-hide-conflicts" ${state.settings.hideConflicts ? "checked" : ""}>
-        隐藏与已选课冲突的教学班/课程
-      </label>
-      <p class="jcp-muted">脚本不会自动调用 DeepSeek。只有点击“选课社区”或评价总结按钮时，才会请求 jCourse；只有点击总结按钮且配置 DeepSeek API Key 时才会请求 DeepSeek。</p>
-      <div class="jcp-actions">
+      <div class="jcp-panel-footer">
         <button type="button" class="jcp-clear-cache">清除缓存</button>
-        <button type="button" class="jcp-cancel">取消</button>
-        <button type="button" class="jcp-primary jcp-save">保存</button>
+        <div class="jcp-actions">
+          <button type="button" class="jcp-cancel">取消</button>
+          <button type="button" class="jcp-primary jcp-save">保存</button>
+        </div>
       </div>
     `;
     document.body.appendChild(mask);
     document.body.appendChild(panel);
     mask.addEventListener("click", closeSettingsPanel);
-    panel.querySelector(".jcp-cancel").addEventListener("click", closeSettingsPanel);
-    panel.querySelector(".jcp-refresh-models").addEventListener("click", () => refreshDeepSeekModels(panel));
-    panel.querySelector(".jcp-key-deepseek").addEventListener("change", () => refreshDeepSeekModels(panel));
+    const cancelButtons = panel.querySelectorAll(".jcp-cancel");
+    for (let i = 0; i < cancelButtons.length; i += 1) cancelButtons[i].addEventListener("click", closeSettingsPanel);
+    panel.querySelector(".jcp-add-provider").addEventListener("click", () => addProviderCard(panel));
     panel.querySelector(".jcp-add-dim").addEventListener("click", () => addDimensionRow(panel, { type: "yesno", label: "", note: "" }));
-    panel.querySelector(".jcp-dim-table").addEventListener("click", (event) => {
+    panel.addEventListener("click", (event) => {
       const target = event.target;
-      if (!target || !target.classList || !target.classList.contains("jcp-delete-dim")) return;
-      const row = target.closest("tr");
-      if (row) row.parentNode.removeChild(row);
+      if (!target || !target.classList) return;
+      if (target.classList.contains("jcp-delete-dim")) {
+        const row = target.closest("tr");
+        if (row) row.remove();
+      } else if (target.classList.contains("jcp-delete-provider")) {
+        const card = target.closest(".jcp-provider-card");
+        if (card) card.remove();
+        ensureActiveProviderCard(panel);
+      }
+    });
+    panel.addEventListener("change", (event) => {
+      if (event.target && event.target.classList && event.target.classList.contains("jcp-provider-active")) {
+        markActiveProviderCard(panel);
+      }
+    });
+    panel.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!target || !target.classList) return;
+      const card = target.closest(".jcp-provider-card");
+      if (!card) return;
+      if (target.classList.contains("jcp-provider-label")) {
+        const title = card.querySelector(".jcp-provider-title");
+        if (title) title.textContent = target.value.trim() || "未命名来源";
+      }
     });
     panel.querySelector(".jcp-clear-cache").addEventListener("click", () => {
       state.jcourseCache = {};
@@ -551,12 +802,16 @@
       saveJson(JCACHE_KEY, state.jcourseCache);
       saveJson(LCACHE_KEY, state.llmCache);
       removeNodes(document.querySelectorAll(".jcp-result"));
-      reportError("缓存已清除");
+      showNotice("缓存已清除");
     });
     panel.querySelector(".jcp-save").addEventListener("click", () => {
-      state.settings.enabledProviders = ["deepseek"];
-      state.settings.providerKeys.deepseek = panel.querySelector(".jcp-key-deepseek").value.trim();
-      state.settings.providerModels.deepseek = panel.querySelector(".jcp-model-deepseek").value.trim() || PROVIDERS.deepseek.defaultModel;
+      const parsed = parseProviderCards(panel);
+      if (parsed.error) {
+        showNotice(parsed.error, "error");
+        return;
+      }
+      state.settings.providers = parsed.providers;
+      state.settings.activeProviderId = parsed.activeProviderId;
       state.settings.jcourseApiKey = panel.querySelector(".jcp-key-jcourse").value.trim();
       state.settings.dimensions = parseDimensionSettingsTable(panel);
       if (!state.settings.dimensions.length) state.settings.dimensions = cloneDefaultDimensions();
@@ -566,76 +821,99 @@
       if (hideToggle) hideToggle.checked = state.settings.hideConflicts;
       closeSettingsPanel();
       scheduleScan();
+      showNotice("设置已保存");
     });
-    refreshDeepSeekModels(panel);
+    markActiveProviderCard(panel);
   }
 
   function closeSettingsPanel() {
     removeNodes(document.querySelectorAll(".jcp-panel-mask, .jcp-panel"));
   }
 
-  function deepSeekModelOptionsHtml(selectedModel) {
-    const current = selectedModel || PROVIDERS.deepseek.defaultModel;
-    const models = state.deepseekModels && state.deepseekModels.length ? state.deepseekModels : [current];
-    const normalized = uniqueStrings(compactValues(models.concat([current, PROVIDERS.deepseek.defaultModel])));
-    const options = [];
-    for (let i = 0; i < normalized.length; i += 1) {
-      const model = normalized[i];
-      options.push(`<option value="${escapeAttr(model)}" ${model === current ? "selected" : ""}>${escapeHtml(model)}</option>`);
-    }
-    return options.join("");
-  }
-
-  async function refreshDeepSeekModels(panel) {
-    if (!panel) return;
-    const keyNode = panel.querySelector(".jcp-key-deepseek");
-    const select = panel.querySelector(".jcp-model-deepseek");
-    const status = panel.querySelector(".jcp-model-status");
-    const button = panel.querySelector(".jcp-refresh-models");
-    const key = keyNode ? keyNode.value.trim() : "";
-    if (!select) return;
-    if (!key) {
-      if (status) status.textContent = "配置 DeepSeek API Key 后可刷新模型列表。";
-      return;
-    }
-    if (button) button.disabled = true;
-    if (status) status.textContent = "正在获取 DeepSeek 模型列表...";
-    try {
-      const data = await requestDeepSeekModels(key);
-      const models = normalizeDeepSeekModels(data);
-      if (!models.length) throw new Error("模型列表为空");
-      state.deepseekModels = models;
-      const current = select.value || state.settings.providerModels.deepseek || PROVIDERS.deepseek.defaultModel;
-      select.innerHTML = deepSeekModelOptionsHtml(current);
-      if (models.indexOf(current) >= 0) select.value = current;
-      if (status) status.textContent = `已获取 ${models.length} 个模型。`;
-    } catch (error) {
-      const message = error && error.message ? error.message : String(error);
-      if (status) status.textContent = `模型列表获取失败：${message}`;
-      reportError("DeepSeek 模型列表获取失败", message);
-    } finally {
-      if (button) button.disabled = false;
-    }
-  }
-
-  function requestDeepSeekModels(apiKey) {
-    return requestJson(PROVIDERS.deepseek.modelsEndpoint, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-    });
-  }
-
-  function normalizeDeepSeekModels(data) {
+  function providerCardsHtml(providers, activeProviderId) {
     const out = [];
-    const items = data && Array.isArray(data.data) ? data.data : [];
-    for (let i = 0; i < items.length; i += 1) {
-      const id = normalizeText(items[i] && items[i].id ? items[i].id : "");
-      if (id && out.indexOf(id) === -1) out.push(id);
+    for (let i = 0; i < providers.length; i += 1) out.push(providerCardHtml(providers[i], providers[i].id === activeProviderId));
+    return out.join("");
+  }
+
+  function providerCardHtml(provider, active) {
+    return `
+      <div class="jcp-provider-card${active ? " jcp-active-provider" : ""}" data-provider-id="${escapeAttr(provider.id)}" data-built-in="${provider.builtIn ? "true" : "false"}">
+        <div class="jcp-provider-head">
+          <input type="radio" class="jcp-provider-active" name="jcp-active-provider" ${active ? "checked" : ""} title="设为当前来源">
+          <strong class="jcp-provider-title">${escapeHtml(provider.label)}</strong>
+          ${provider.builtIn ? '<span class="jcp-provider-tag">内置</span>' : '<button type="button" class="jcp-delete-provider">删除</button>'}
+        </div>
+        <div class="jcp-provider-grid">
+          <label>名称<input type="text" class="jcp-provider-label" value="${escapeAttr(provider.label)}" ${provider.builtIn ? "readonly" : ""}></label>
+          <label>API Key<input type="password" class="jcp-provider-key" value="${escapeAttr(provider.key)}" placeholder="sk-..."></label>
+          <label class="jcp-provider-endpoint">Chat Completions 地址<input type="text" class="jcp-provider-endpoint-input" value="${escapeAttr(provider.endpoint)}" ${provider.builtIn ? "readonly" : ""} placeholder="https://example.com/v1/chat/completions"></label>
+          <label class="jcp-provider-model-field">模型<input type="text" class="jcp-provider-model" value="${escapeAttr(provider.model)}" placeholder="model-id"></label>
+        </div>
+      </div>`;
+  }
+
+  function addProviderCard(panel) {
+    const id = `custom-${Date.now()}`;
+    const provider = { id, label: "自定义来源", endpoint: "", key: "", model: "", builtIn: false };
+    panel.querySelector(".jcp-provider-list").insertAdjacentHTML("beforeend", providerCardHtml(provider, false));
+    const cards = panel.querySelectorAll(".jcp-provider-card");
+    const card = cards[cards.length - 1];
+    if (card) card.querySelector(".jcp-provider-label").focus();
+  }
+
+  function ensureActiveProviderCard(panel) {
+    if (panel.querySelector(".jcp-provider-active:checked")) return;
+    const first = panel.querySelector(".jcp-provider-active");
+    if (first) first.checked = true;
+    markActiveProviderCard(panel);
+  }
+
+  function markActiveProviderCard(panel) {
+    const cards = panel.querySelectorAll(".jcp-provider-card");
+    for (let i = 0; i < cards.length; i += 1) {
+      const radio = cards[i].querySelector(".jcp-provider-active");
+      cards[i].classList.toggle("jcp-active-provider", Boolean(radio && radio.checked));
     }
-    return out;
+  }
+
+  function parseProviderCards(panel) {
+    const cards = toArray(panel.querySelectorAll(".jcp-provider-card"));
+    const providers = [];
+    let activeProviderId = "";
+    for (let i = 0; i < cards.length; i += 1) {
+      const card = cards[i];
+      const builtIn = card.dataset.builtIn === "true";
+      const label = normalizeText(card.querySelector(".jcp-provider-label").value);
+      const endpoint = normalizeText(card.querySelector(".jcp-provider-endpoint-input").value);
+      const model = normalizeText(card.querySelector(".jcp-provider-model").value);
+      if (!label) return { error: "LLM 来源名称不能为空" };
+      if (!isAllowedEndpoint(endpoint)) return { error: `${label} 的 Chat Completions 地址无效` };
+      if (!model) return { error: `${label} 的模型不能为空` };
+      let id = builtIn ? "deepseek" : normalizeProviderId(card.dataset.providerId || label);
+      if (!id || providerIdExists(providers, id)) id = `custom-${Date.now()}-${i}`;
+      const provider = {
+        id,
+        label,
+        endpoint,
+        key: card.querySelector(".jcp-provider-key").value.trim(),
+        model,
+        builtIn,
+      };
+      providers.push(provider);
+      if (card.querySelector(".jcp-provider-active").checked) activeProviderId = id;
+    }
+    if (!providers.length) return { error: "至少需要保留一个 LLM 来源" };
+    return { providers, activeProviderId: activeProviderId || providers[0].id };
+  }
+
+  function isAllowedEndpoint(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" || (url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1"));
+    } catch (error) {
+      return false;
+    }
   }
 
   function mutationHasRelevantNode(mutation) {
@@ -694,12 +972,10 @@
     }
 
     if (!courses.length) {
-      const hasContentBox = Boolean(document.querySelector("#contentBox"));
-      const hasPanels = document.querySelectorAll(".panel.panel-info").length;
-      setStatus(`未找到课程 DOM；contentBox=${hasContentBox ? "有" : "无"}，panel=${hasPanels}`);
+      setStatus("等待课程列表");
       if (!state.zeroDomReported) {
         state.zeroDomReported = true;
-        reportError("未找到候选课程列表", `当前页面：${location.pathname}`);
+        console.debug("[交大选课助手+] 暂未找到候选课程列表", location.pathname);
       }
       return;
     }
@@ -799,6 +1075,10 @@
       entry.row.classList.toggle("jcp-row-selected", rowSelected);
       entry.row.classList.toggle("jcp-row-conflict", rowConflict);
       entry.row.classList.toggle("jcp-hidden-conflict", rowConflict && state.settings.hideConflicts);
+      const detailRow = entry.row.nextElementSibling;
+      if (detailRow && detailRow.classList && detailRow.classList.contains("jcp-row-summary-detail")) {
+        detailRow.classList.toggle("jcp-hidden-conflict", rowConflict && state.settings.hideConflicts);
+      }
       removeOwned(entry.row, ".jcp-row-status");
       if (rowSelected) {
         selectedRows += 1;
@@ -868,25 +1148,30 @@
   function ensureSummaryButton(course) {
     const info = ensureHeadingRight(course);
     if (!info) return;
-    ensureCommunityLink(course, info);
-    if (course.multiTeacher) {
-      removeOwned(info, ".jcp-summary-btn");
+    if (hasMultipleTeachingClasses(course)) {
+      removeOwned(info, ".jcp-summary-btn, .jcp-community-link");
+      removeOwned(course.heading, ".jcp-heading-summary-line");
       ensureRowSummaryButtons(course);
       return;
     }
     removeOwned(course.panel, ".jcp-row-summary-wrap");
+    ensureCommunityLink(course, info);
     if (info.querySelector(".jcp-summary-btn")) return;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "jcp-summary-btn jcp-primary";
-    button.textContent = "选课社区评价总结";
+    button.textContent = "总结评价";
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      runCourseSummary(course, course.rows[0] || null, info, button);
+      runCourseSummary(course, course.rows[0] || null, button);
     });
     info.appendChild(button);
+  }
+
+  function hasMultipleTeachingClasses(course) {
+    return Boolean(course && course.rows && course.rows.length > 1);
   }
 
   function ensureHeadingRight(course) {
@@ -903,10 +1188,10 @@
 
   function updateTeacherBadge(course, info) {
     removeOwned(info, ".jcp-teacher-status");
-    if (!course.multiTeacher) return;
+    if (!hasMultipleTeachingClasses(course)) return;
     const tag = document.createElement("span");
     tag.className = "jcp-badge jcp-warning jcp-teacher-status";
-    tag.textContent = "有多个老师";
+    tag.textContent = `${course.rows.length} 个教学班`;
     info.appendChild(tag);
   }
 
@@ -914,6 +1199,7 @@
     for (let i = 0; i < course.rows.length; i += 1) {
       const entry = course.rows[i];
       const target = entry.row.querySelector(".an") || entry.row.lastElementChild || entry.row;
+      target.classList.add("jcp-action-cell");
       if (target.querySelector(".jcp-row-summary-wrap")) continue;
       const wrap = document.createElement("span");
       wrap.className = "jcp-row-summary-wrap";
@@ -932,12 +1218,12 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "jcp-summary-btn jcp-primary";
-      button.textContent = "本班评价总结";
+      button.textContent = "总结评价";
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        runCourseSummary(course, entry, wrap, button);
+        runCourseSummary(course, entry, button);
       });
       wrap.appendChild(link);
       wrap.appendChild(button);
@@ -984,55 +1270,57 @@
     }
   }
 
-  async function runCourseSummary(course, rowEntry, info, button) {
+  async function runCourseSummary(course, rowEntry, button) {
     button.disabled = true;
-    button.textContent = "总结中...";
+    button.textContent = "总结中…";
+    let result = ensureSummaryResult(course, rowEntry);
+    const initialTeacher = rowEntry && rowEntry.teacher ? rowEntry.teacher : firstTeacher(course.rows);
+    renderSummaryState(result, { teacher: initialTeacher, status: "正在准备评价…", loading: true });
     try {
       const prepared = await prepareExpandedCourse(course, rowEntry, true);
       course = prepared.course;
       rowEntry = prepared.rowEntry;
-      if (course.multiTeacher && (!rowEntry || !rowEntry.teacher)) {
-        clearHeadingSummary(course);
-        reportError(`多教师课程不支持总体总结：${course.code} ${course.courseName}`, "请点击具体教学班旁边的“本班评价总结”。");
+      if (hasMultipleTeachingClasses(course) && !rowEntry) {
+        renderSummaryState(result, { status: "请选择具体教学班后再总结" });
+        scheduleScan();
         return;
       }
-      const result = ensureHeadingSummaryLine(course);
+      result = ensureSummaryResult(course, rowEntry) || result;
       const teacher = rowEntry && rowEntry.teacher ? rowEntry.teacher : firstTeacher(course.rows);
       const department = rowEntry && rowEntry.department ? rowEntry.department : course.department;
-      const contextHtml = teacher ? metaChipHtml("教师", teacher, "jcp-warning") : "";
-      renderHeadingSummary(result, `${contextHtml}${metaChipHtml("", "正在读取 jCourse", "jcp-warning")}`, "");
+      renderSummaryState(result, { teacher, status: "正在读取选课社区评价…", loading: true });
       if (!teacher) throw new Error("缺少具体老师信息，无法进行评价总结");
       const sourceResult = await searchJCourseSources(course, teacher, department);
       if (!sourceResult || !sourceResult.sources || !sourceResult.sources.length) throw new Error(`jCourse 未匹配：${course.code} ${course.courseName}${department ? `（学院：${department}）` : "（缺少开课学院）"}`);
       const sources = sourceResult.sources;
-      updateHeadingRating(course, sources);
+      if (!hasMultipleTeachingClasses(course)) updateHeadingRating(course, sources);
       const sourceText = oldCodeSourcesText(course, sources);
       const teacherText = matchedTeacherSourcesText(sources);
-      renderHeadingSummary(result, `${contextHtml}${metaChipHtml("", "正在总结评价", "jcp-warning")}`, sourceMetaHtml(sourceText, teacherText));
+      const loadingMeta = summaryMetaHtml(course, sources, sourceText, teacherText, false);
+      renderSummaryState(result, { teacher, status: "正在生成总结…", loading: true, metaHtml: loadingMeta });
       const summarizingSince = Date.now();
       const reviews = await fetchReviewsForSources(sources);
       if (!reviews.length) {
         await waitUntilElapsed(summarizingSince, 100);
-        renderHeadingSummary(result, `${contextHtml}${metaChipHtml("", "暂无评价可总结", "jcp-warning")}`, sourceMetaHtml(sourceText, teacherText));
+        renderSummaryState(result, { teacher, status: "暂无评价可总结", metaHtml: loadingMeta });
         return;
       }
       const stale = isPossiblyStale(reviews);
-      const provider = firstEnabledProvider();
-      if (!provider) throw new Error("未启用 LLM 来源");
-      const key = state.settings.providerKeys[provider];
-      if (!key) throw new Error(`${PROVIDERS[provider].label} API Key 未配置`);
+      const provider = activeProvider();
+      if (!provider) throw new Error("未选择 LLM 来源");
+      if (!provider.key) throw new Error(`${provider.label} API Key 未配置`);
       const summary = await summarizeReviews(provider, sources, reviews);
       await waitUntilElapsed(summarizingSince, 100);
-      const extras = [];
-      if (sourceText) extras.push(metaChipHtml("旧课号", sourceText, "jcp-warning"));
-      if (teacherText) extras.push(metaChipHtml("jCourse教师", teacherText, "jcp-warning"));
-      if (stale) extras.push(metaChipHtml("", "可能过时", "jcp-warning"));
-      renderHeadingSummary(result, `${contextHtml}<span class="jcp-badge jcp-summary">${escapeHtml(summary)}</span>`, extras.join(""));
+      renderSummaryState(result, {
+        teacher,
+        summary,
+        metaHtml: summaryMetaHtml(course, sources, sourceText, teacherText, stale),
+      });
     } catch (error) {
-      const message = error && error.message ? error.message : String(error);
-      const result = ensureHeadingSummaryLine(course);
-      renderHeadingSummary(result, metaChipHtml("错误", message, "jcp-conflict-tag"), "");
-      reportError(`课程总结失败：${course.code} ${course.courseName}`, message);
+      const message = friendlyErrorText(error);
+      result = ensureSummaryResult(course, rowEntry) || result;
+      renderSummaryState(result, { teacher: rowEntry && rowEntry.teacher ? rowEntry.teacher : initialTeacher, status: message, error: true });
+      reportError(`课程总结失败：${course.code} ${course.courseName}`, error);
     } finally {
       button.disabled = false;
       button.textContent = "重新总结";
@@ -1094,34 +1382,88 @@
     return remaining > 0 ? delay(remaining) : Promise.resolve();
   }
 
-  function ensureHeadingSummaryLine(course) {
-    if (!course.heading) return null;
-    let line = course.heading.querySelector(".jcp-heading-summary-line");
-    if (!line) {
-      line = document.createElement("div");
-      line.className = "jcp-heading-summary-line jcp-result";
-      const main = document.createElement("span");
-      main.className = "jcp-heading-summary-main";
-      const extra = document.createElement("span");
-      extra.className = "jcp-heading-summary-extra";
-      line.appendChild(main);
-      line.appendChild(extra);
-      course.heading.appendChild(line);
+  function ensureSummaryResult(course, rowEntry) {
+    if (rowEntry && rowEntry.row) {
+      if (course && course.heading) removeOwned(course.heading, ".jcp-heading-summary-line");
+      let detailRow = rowEntry.row.nextElementSibling;
+      if (!detailRow || !detailRow.classList.contains("jcp-row-summary-detail")) {
+        detailRow = document.createElement("tr");
+        detailRow.className = "jcp-row-summary-detail jcp-result";
+        const cell = document.createElement("td");
+        cell.colSpan = Math.max(1, rowEntry.row.cells ? rowEntry.row.cells.length : 1);
+        detailRow.appendChild(cell);
+        rowEntry.row.insertAdjacentElement("afterend", detailRow);
+      }
+      return ensureSummaryCard(detailRow.querySelector("td"), "jcp-row-summary-card");
     }
-    return line;
+    if (!course || !course.heading) return null;
+    return ensureSummaryCard(course.heading, "jcp-heading-summary-line");
   }
 
-  function renderHeadingSummary(line, mainHtml, extraHtml) {
-    if (!line) return;
-    const main = line.querySelector(".jcp-heading-summary-main");
-    const extra = line.querySelector(".jcp-heading-summary-extra");
-    if (main) main.innerHTML = mainHtml || "";
-    if (extra) extra.innerHTML = extraHtml || "";
+  function ensureSummaryCard(container, className) {
+    if (!container) return null;
+    let card = null;
+    const children = container.children || [];
+    for (let i = 0; i < children.length; i += 1) {
+      if (children[i].classList && children[i].classList.contains(className)) {
+        card = children[i];
+        break;
+      }
+    }
+    if (!card) {
+      card = document.createElement("div");
+      card.className = `${className} jcp-summary-card`;
+      card.innerHTML = '<div class="jcp-summary-card-head"></div><div class="jcp-summary-card-body"></div><div class="jcp-summary-meta"></div>';
+      container.appendChild(card);
+    }
+    return card;
   }
 
-  function clearHeadingSummary(course) {
-    if (!course || !course.heading) return;
-    removeOwned(course.heading, ".jcp-heading-summary-line");
+  function renderSummaryState(card, options) {
+    if (!card) return;
+    const head = card.querySelector(".jcp-summary-card-head");
+    const body = card.querySelector(".jcp-summary-card-body");
+    const meta = card.querySelector(".jcp-summary-meta");
+    const teacher = options && options.teacher ? `<span class="jcp-summary-context">${escapeHtml(options.teacher)}</span>` : "";
+    if (head) head.innerHTML = `<strong>评价总结</strong>${teacher}`;
+    if (body) {
+      if (options && options.summary) {
+        body.innerHTML = summaryGridHtml(options.summary);
+      } else {
+        const spinner = options && options.loading ? '<span class="jcp-summary-loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>' : "";
+        const errorClass = options && options.error ? " jcp-summary-error" : "";
+        body.innerHTML = `<div class="jcp-summary-state${errorClass}">${spinner}<span>${escapeHtml(options && options.status ? options.status : "")}</span></div>`;
+      }
+    }
+    if (meta) {
+      meta.innerHTML = options && options.metaHtml ? options.metaHtml : "";
+      meta.style.display = meta.innerHTML ? "flex" : "none";
+    }
+  }
+
+  function summaryGridHtml(summary) {
+    const items = String(summary || "").split(" | ");
+    const html = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const separator = items[i].indexOf(":");
+      if (separator < 0) {
+        html.push(`<div class="jcp-summary-item"><span class="jcp-summary-item-value">${escapeHtml(items[i])}</span></div>`);
+        continue;
+      }
+      const label = items[i].slice(0, separator);
+      const value = items[i].slice(separator + 1);
+      html.push(`<div class="jcp-summary-item"><span class="jcp-summary-item-label">${escapeHtml(label)}</span><span class="jcp-summary-item-value">${escapeHtml(value)}</span></div>`);
+    }
+    return `<div class="jcp-summary-grid">${html.join("")}</div>`;
+  }
+
+  function summaryMetaHtml(course, sources, sourceText, teacherText, stale) {
+    const extras = [];
+    if (hasMultipleTeachingClasses(course)) extras.push(metaChipHtml("评分", formatSourcesRating(sources), "jcp-rating"));
+    if (sourceText) extras.push(metaChipHtml("旧课号", sourceText, "jcp-warning"));
+    if (teacherText) extras.push(metaChipHtml("教师", teacherText, "jcp-warning"));
+    if (stale) extras.push(metaChipHtml("", "评价可能过时", "jcp-warning"));
+    return extras.join("");
   }
 
   function metaChipHtml(label, value, className) {
@@ -1309,12 +1651,12 @@
     return null;
   }
 
-  function firstEnabledProvider() {
-    for (let i = 0; i < state.settings.enabledProviders.length; i += 1) {
-      const provider = state.settings.enabledProviders[i];
-      if (PROVIDERS[provider]) return provider;
+  function activeProvider() {
+    const providers = state.settings.providers || [];
+    for (let i = 0; i < providers.length; i += 1) {
+      if (providers[i].id === state.settings.activeProviderId) return providers[i];
     }
-    return "";
+    return providers.length ? providers[0] : null;
   }
 
   function firstTeacher(rows) {
@@ -1464,13 +1806,6 @@
     return teachers.join(",");
   }
 
-  function sourceMetaHtml(sourceText, teacherText) {
-    const parts = [];
-    if (sourceText) parts.push(metaChipHtml("旧课号", sourceText, "jcp-warning"));
-    if (teacherText) parts.push(metaChipHtml("jCourse教师", teacherText, "jcp-warning"));
-    return parts.join("");
-  }
-
   function formatSourcesRating(sources) {
     if (!sources.length) return "暂无评分";
     if (sources.length === 1) return formatRating(sources[0].course.rating);
@@ -1557,11 +1892,10 @@
     return reviews;
   }
 
-  async function summarizeReviews(providerId, sources, reviews) {
-    const provider = PROVIDERS[providerId];
+  async function summarizeReviews(provider, sources, reviews) {
     const dimensions = state.settings.dimensions;
-    const model = state.settings.providerModels[providerId] || provider.defaultModel;
-    const cacheKey = stableKey(["summary", providerId, sourcesFingerprint(sources), latestReviewFingerprint(reviews), dimensionsKey(dimensions), model]);
+    const model = provider.model;
+    const cacheKey = stableKey(["summary", provider.id, provider.endpoint, sourcesFingerprint(sources), latestReviewFingerprint(reviews), dimensionsKey(dimensions), model]);
     const cached = getCache(state.llmCache, cacheKey);
     if (cached !== undefined) return cached;
 
@@ -1591,14 +1925,14 @@
     const response = await requestJson(provider.endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${state.settings.providerKeys[providerId]}`,
+        Authorization: `Bearer ${provider.key}`,
         "Content-Type": "application/json",
       },
       data: {
         model,
         temperature: 0.2,
         messages: [
-          { role: "system", content: "你是上海交通大学选课助手。只输出符合要求的 JSON，不要输出 Markdown。" },
+          { role: "system", content: "你是交大选课助手+。只输出符合要求的 JSON，不要输出 Markdown。" },
           { role: "user", content: prompt },
         ],
       },

@@ -32,6 +32,10 @@
     "changelog": "scripts/sjtu-course-assistant-plus/CHANGELOG.md",
     "standardsVersion": 1,
     "releaseBranch": "release/sjtu-course-assistant-plus",
+    "permissions": {
+      "allowWildcardConnect": true,
+      "reason": "Users explicitly configure arbitrary OpenAI-compatible LLM API endpoints."
+    },
     "compatibility": {
       "disallowPrototypeArrayMethods": true
     }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0
+
+- Redesigned the toolbar, course actions, summary cards, settings dialog, status badges, and responsive layout to blend more naturally into the SJTU course selection page.
+- Replaced persistent diagnostic error blocks with concise, auto-dismissed notices and kept background scan diagnostics out of the page UI.
+- Added management for OpenAI-compatible LLM providers, including add, edit, remove, and active-provider selection; model IDs are entered directly without model-list requests.
+- Kept DeepSeek as a built-in, non-removable provider and migrated existing DeepSeek keys and model selections automatically.
+- Added independent, full-width summary cards for every teaching class so multiple results can remain visible and comparable.
+- Unified single-class and multi-class summary cards, replaced the spinner with subtle loading dots, gave yes/no explanations more room, and aligned teaching-class action buttons.
+- Removed the active LLM label from summary cards and shortened the matched-teacher label to `教师`.
+- Shortened the summary action to `总结评价` and marked jCourse links with an external-link arrow.
+- Allowed user-configured HTTPS LLM endpoints and documented their network and privacy implications.
+
 ## 0.8.2
 
 - Added neutral `UNLICENSED` metadata and the repository support URL.

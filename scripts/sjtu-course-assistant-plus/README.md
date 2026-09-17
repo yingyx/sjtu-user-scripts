@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-SJTU Course Assistant Plus enhances the SJTU course selection page with time-conflict filtering, jCourse links, course ratings, and optional AI-generated review summaries.
+SJTU Course Assistant Plus enhances the SJTU course selection page with time-conflict filtering, jCourse links, course ratings, and optional review summaries from DeepSeek or user-configured OpenAI-compatible LLMs.
 
 ## What It Does
 
@@ -10,7 +10,7 @@ SJTU Course Assistant Plus enhances the SJTU course selection page with time-con
 - Can hide conflicting classes and courses.
 - Adds a jCourse community link for matched courses.
 - Shows the jCourse average rating when a course can be matched.
-- Generates review summaries with DeepSeek when you provide a DeepSeek API key.
+- Manages multiple LLM providers and generates review summaries on demand.
 - Lets you customize summary dimensions, such as attendance, interaction, and exams.
 
 ## Installation
@@ -33,8 +33,7 @@ Use the toolbar to:
 
 - `Hide conflicting courses`: hide teaching classes or course panels that conflict with courses you have already selected.
 - `Rescan`: scan the current course list again after searching, expanding panels, or changing selected courses.
-- `Settings`: configure API keys, models, summary dimensions, and conflict hiding.
-- `Clear errors`: clear displayed script error messages.
+- `Settings`: manage LLM providers, API keys, models, summary dimensions, and conflict hiding.
 
 The script scans the selected-course schedule and compares it with the teaching classes currently shown on the page. Conflict labels are shown directly in the course list.
 
@@ -48,36 +47,34 @@ https://course.sjtu.plus
 
 When a match is available, you may see:
 
-- A `Course Community` link that opens the matching jCourse page.
+- A `Course Community ↗` link that opens the matching jCourse page in a new tab.
 - An average rating badge near the course title or status area.
 
 jCourse data is requested only when you click the community link or a summary button.
 
 ## AI Review Summaries
 
-The script supports DeepSeek for review summaries.
+The script includes DeepSeek and supports custom OpenAI Chat Completions-compatible providers.
 
 To enable summaries:
 
 1. Click `Settings`.
-2. Enter your DeepSeek API key.
-3. Select or refresh the DeepSeek model list.
+2. Select built-in DeepSeek or add a custom LLM provider.
+3. Enter the API key, Chat Completions endpoint, and model ID.
 4. Save settings.
-5. Click a review summary button in the course list.
+5. Click `Summarize reviews` in the course list.
 
-The script does not call DeepSeek automatically. DeepSeek is called only when you click a summary button and a DeepSeek API key is configured.
+The script does not call an LLM automatically. It sends reviews only when you click a summary button and the active provider is configured.
 
-For courses with multiple teachers, use the summary button next to a specific teaching class. A course-level summary may be unavailable because the teacher must be selected first.
+Single-class and multi-class courses use the same summary-card layout, with each result expanding below its teaching class. For courses with multiple teaching classes, every class gets its own summary action and multiple results can remain visible for comparison.
 
 ## Settings
 
-### DeepSeek API Key
+### LLM Providers
 
-Used to request AI summaries. Without this key, jCourse links and ratings can still work, but AI summaries cannot be generated.
+DeepSeek is built in and cannot be removed. You can add, edit, remove, and switch custom providers. Custom providers must implement the OpenAI Chat Completions API. Endpoints must use HTTPS, except local services on `localhost` or `127.0.0.1`, which may use HTTP.
 
-### DeepSeek Model
-
-The default model is `deepseek-v4-flash`. If an API key is configured, you can refresh the model list from DeepSeek.
+Each provider stores a display name, Chat Completions endpoint, API key, and model ID. The endpoint and model fields are displayed side by side. The built-in DeepSeek model defaults to `deepseek-v4-flash`; model IDs are entered directly and the script never fetches model lists.
 
 ### jCourse API Key
 
@@ -109,9 +106,10 @@ The script stores settings and caches in your userscript manager storage.
 It may request:
 
 - `course.sjtu.plus` when you click jCourse links or summary buttons.
-- `api.deepseek.com` when you click a summary button and have configured a DeepSeek API key.
+- `api.deepseek.com` when you generate a summary with built-in DeepSeek.
+- Any LLM endpoint you explicitly configure, when you generate a summary with it.
 
-The script does not automatically send course data to DeepSeek during normal page scanning.
+Summary requests send the active provider up to 12 jCourse reviews plus course, teacher, rating, semester, and review-time context. Provider settings, API keys, and caches stay in userscript-manager local storage. Normal page scanning sends no course data to an LLM.
 
 ## Troubleshooting
 
@@ -121,8 +119,8 @@ If no community link or rating appears, the course may not be matched in jCourse
 
 If summaries fail, check that:
 
-- Your DeepSeek API key is correct.
-- The selected model is available.
+- The active provider's API key and endpoint are correct.
+- The selected model is available and the service is OpenAI Chat Completions-compatible.
 - The jCourse course can be matched.
 - Your userscript manager allows cross-origin requests for the configured domains.
 
