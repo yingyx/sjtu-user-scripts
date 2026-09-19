@@ -167,7 +167,7 @@ function formatSummary(plan) {
     `| GreasyFork source | ${escapeTable(plan.codeSyncUrl)} |`,
     "",
     plan.dryRun
-      ? "Remote state will be checked, but the release branch, tag, GitHub Release, and GreasyFork source will not be changed."
+      ? "Remote state will be checked, but the release branch, tag, and GreasyFork source will not be changed."
       : "After the atomic ref update, GreasyFork may check the configured release-branch source through its webhook.",
     "",
   ].join("\n");

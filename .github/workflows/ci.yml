@@ -1,4 +1,4 @@
-name: CI
+name: Validate repository
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: validate-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -29,143 +29,3 @@ jobs:
 
       - name: Validate repository and run tooling tests
         run: npm run check
-
-  detect-releases:
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.USERSCRIPT_AUTO_RELEASE == 'enabled' }}
-    needs: check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      has_releases: ${{ steps.detect.outputs.has_releases }}
-      matrix: ${{ steps.detect.outputs.matrix }}
-      release_count: ${{ steps.detect.outputs.release_count }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install tooling dependencies
-        run: npm ci
-
-      - name: Fetch release branches and tags
-        run: git fetch origin --prune --tags
-
-      - name: Detect publishable version changes
-        id: detect
-        run: npm run release:detect -- --source-ref "$GITHUB_REF" --commit-sha "$GITHUB_SHA"
-
-  approve-releases:
-    if: ${{ always() && needs.detect-releases.outputs.has_releases == 'true' }}
-    needs:
-      - detect-releases
-      - plan-releases
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment:
-      name: userscript-production
-    permissions:
-      contents: read
-
-    steps:
-      - name: Record production approval
-        env:
-          PLAN_RESULT: ${{ needs.plan-releases.result }}
-          RELEASE_COUNT: ${{ needs.detect-releases.outputs.release_count }}
-        run: echo "Approved $RELEASE_COUNT userscript release candidate(s) after plans finished with result $PLAN_RESULT."
-
-  plan-releases:
-    if: ${{ needs.detect-releases.outputs.has_releases == 'true' }}
-    needs: detect-releases
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.detect-releases.outputs.matrix) }}
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install tooling dependencies
-        run: npm ci
-
-      - name: Validate repository and run tooling tests
-        run: npm run check
-
-      - name: Create validated dry-run plan
-        id: plan
-        env:
-          SCRIPT_ID: ${{ matrix.script_id }}
-          EXPECTED_VERSION: ${{ matrix.version }}
-          RELEASE_NOTES_PATH: ${{ runner.temp }}/userscript-release-notes.md
-        run: node tools/plan-release.js --script-id "$SCRIPT_ID" --version "$EXPECTED_VERSION" --source-ref "$GITHUB_REF" --commit-sha "$GITHUB_SHA" --dry-run
-
-      - name: Check remote release state
-        env:
-          ENTRY: ${{ steps.plan.outputs.entry }}
-          RELEASE_BRANCH: ${{ steps.plan.outputs.release_branch }}
-          TAG: ${{ steps.plan.outputs.tag }}
-          VERSION: ${{ steps.plan.outputs.version }}
-        run: |
-          git fetch origin --prune --tags
-
-          if git show-ref --verify --quiet "refs/tags/$TAG"; then
-            echo "Release tag already exists: $TAG" >&2
-            exit 1
-          fi
-
-          remote_ref="refs/remotes/origin/$RELEASE_BRANCH"
-          released_version="Not published"
-          if git show-ref --verify --quiet "$remote_ref"; then
-            if ! git merge-base --is-ancestor "$remote_ref" "$GITHUB_SHA"; then
-              echo "Release branch $RELEASE_BRANCH cannot be fast-forwarded to $GITHUB_SHA." >&2
-              exit 1
-            fi
-            released_version="$(git show "$remote_ref:$ENTRY" | awk '$2 == "@version" { print $3; exit }')"
-            if [[ -z "$released_version" ]]; then
-              echo "Cannot read @version from $RELEASE_BRANCH:$ENTRY." >&2
-              exit 1
-            fi
-            node -e 'require("./tools/plan-release").assertVersionAdvance(process.argv[1], process.argv[2])' "$VERSION" "$released_version"
-          fi
-
-          {
-            echo "### Remote preflight"
-            echo
-            echo "- Current release version: $released_version"
-            echo "- Candidate version: $VERSION"
-            echo "- Tag is available: $TAG"
-            echo "- Release branch can be updated safely: $RELEASE_BRANCH"
-            echo
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  promote-releases:
-    if: ${{ needs.detect-releases.outputs.has_releases == 'true' }}
-    needs:
-      - detect-releases
-      - approve-releases
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.detect-releases.outputs.matrix) }}
-    uses: ./.github/workflows/release.yml
-    with:
-      script_id: ${{ matrix.script_id }}
-      version: ${{ matrix.version }}
-      dry_run: false
-      create_github_release: false
-    permissions:
-      contents: write

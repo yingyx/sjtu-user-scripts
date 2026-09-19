@@ -76,6 +76,6 @@ npm run new -- --id <script-id> --name <中文名称> --name-en <English-name> -
 
 仓库中的用户脚本彼此独立。每个可发布脚本都必须注册到 `scripts.json`，在各自的 `CHANGELOG.md` 中维护发布说明，并通过独立的 `release/<script-id>` 分支发布。
 
-仓库管理员启用受保护的发布门禁后，推送到 `main` 会检测版本提升、为每个受影响脚本生成 dry-run 计划、等待一次 `userscript-production` 审批，并独立发布获得批准的脚本。手动 workflow 仍用于首次发布、dry run 和故障恢复。
+`Validate repository` 负责检查 pull request 和相关 push。它在 `main` 上成功后，`Publish userscript updates` 会检测已发布脚本的版本提升并生成发布计划，再调用 `Promote userscript (internal)`；真正拥有写权限的任务会等待 `userscript-production` 审批。唯一的手动发布入口 `Bootstrap new userscript` 只用于尚未记录 GreasyFork ID 的脚本首次发布。
 
 完整 CI/CD 和 GreasyFork 同步说明见 `docs/release.md`。

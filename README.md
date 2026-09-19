@@ -76,6 +76,6 @@ New scripts receive strict validation immediately. Existing scripts are migrated
 
 This repository supports multiple independent userscripts. Register each publishable script in `scripts.json`, keep per-script release notes in `scripts/<script-id>/CHANGELOG.md`, and publish through that script's `release/<script-id>` branch.
 
-Once repository administrators enable the protected release gate, a push to `main` detects version advances, creates a dry-run plan for each affected script, waits for one `userscript-production` approval, and promotes the approved scripts independently. The manual workflow remains available for first publication, dry runs, and recovery.
+`Validate repository` checks every pull request and relevant push. After it succeeds on `main`, `Publish userscript updates` detects version advances, creates a dry-run plan for each affected published script, and calls `Promote userscript (internal)`, whose write-enabled jobs wait for `userscript-production` approval. `Bootstrap new userscript` is the only manual publishing entry and is restricted to first publication of scripts that do not yet have a GreasyFork ID.
 
 See `docs/release.md` for the full CI/CD and GreasyFork synchronization workflow.

@@ -1,0 +1,96 @@
+name: Bootstrap new userscript
+
+on:
+  workflow_dispatch:
+    inputs:
+      script_id:
+        description: Unpublished script ID from scripts.json
+        required: true
+        type: string
+      version:
+        description: Version expected in the userscript @version field
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bootstrap-userscript-${{ inputs.script_id }}
+  cancel-in-progress: false
+
+jobs:
+  validate-bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the main branch
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "Bootstrap must be dispatched from main; received ${GITHUB_REF}." >&2
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install tooling dependencies
+        run: npm ci
+
+      - name: Validate repository and run tooling tests
+        run: npm run check
+
+      - name: Create first-publication plan
+        id: plan
+        env:
+          SCRIPT_ID: ${{ inputs.script_id }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+          RELEASE_NOTES_PATH: ${{ runner.temp }}/userscript-release-notes.md
+        run: node tools/plan-release.js --script-id "$SCRIPT_ID" --version "$EXPECTED_VERSION" --source-ref refs/heads/main --commit-sha "$GITHUB_SHA" --dry-run
+
+      - name: Require an unpublished script and unused refs
+        env:
+          GREASY_FORK_ID: ${{ steps.plan.outputs.greasy_fork_id }}
+          RELEASE_BRANCH: ${{ steps.plan.outputs.release_branch }}
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          if [[ -n "$GREASY_FORK_ID" ]]; then
+            echo "This script already has GreasyFork ID $GREASY_FORK_ID; use automatic publishing." >&2
+            exit 1
+          fi
+
+          git fetch origin --prune --tags
+          if git show-ref --verify --quiet "refs/remotes/origin/$RELEASE_BRANCH"; then
+            echo "Release branch already exists: $RELEASE_BRANCH" >&2
+            exit 1
+          fi
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            echo "Release tag already exists: $TAG" >&2
+            exit 1
+          fi
+
+          {
+            echo "### Bootstrap preflight"
+            echo
+            echo "- Script has no GreasyFork ID."
+            echo "- Release branch is available: $RELEASE_BRANCH"
+            echo "- Tag is available: $TAG"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  promote-bootstrap:
+    needs: validate-bootstrap
+    uses: ./.github/workflows/release.yml
+    with:
+      script_id: ${{ inputs.script_id }}
+      version: ${{ inputs.version }}
+      source_sha: ${{ github.sha }}
+    permissions:
+      contents: write

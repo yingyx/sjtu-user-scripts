@@ -30,7 +30,7 @@ Code, metadata, README, CHANGELOG, privacy disclosures, and tests must agree. A 
 
 The root `README.md` and `README.zh-CN.md` are maintained together. Their marked script-list blocks are generated; update them with `npm run docs:sync` instead of editing those blocks by hand. Repository-level usage or workflow changes must be reflected in both root README files.
 
-When a published script's version is advanced and merged to `main`, CI may prepare a production release that still requires approval through the `userscript-production` environment. Do not bypass a failed automatic plan with a direct release; follow `docs/release.md`.
+When a published script's version is advanced and merged to `main`, a successful `Validate repository` run triggers `Publish userscript updates`, whose promotion jobs require approval through the `userscript-production` environment. `Bootstrap new userscript` is only for first publication. Do not bypass a failed automatic plan with a direct release; follow `docs/release.md`.
 
 ## Commit messages
 

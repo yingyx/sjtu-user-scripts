@@ -111,7 +111,7 @@ test("release output files contain only the selected version notes", () => {
   }
 });
 
-test("GitHub output and workflow preserve the release safety gates", () => {
+test("GitHub output and internal promotion preserve the release safety gates", () => {
   const plan = createReleasePlan(root, {
     scriptId: "sjtu-course-assistant-plus",
     expectedVersion: currentVersion("sjtu-course-assistant-plus"),
@@ -120,25 +120,46 @@ test("GitHub output and workflow preserve the release safety gates", () => {
   assert.throws(() => githubOutput({ ...plan, releaseName: "unsafe\noutput" }), /must be a single line/);
 
   const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "release.yml"), "utf8");
-  assert.match(workflow, /dry_run:[\s\S]*?default: true/);
-  assert.match(workflow, /github\.ref != 'refs\/heads\/main'/);
+  assert.match(workflow, /^name: Promote userscript \(internal\)$/m);
+  assert.match(workflow, /workflow_call:/);
+  assert.doesNotMatch(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /source_sha:/);
+  assert.match(workflow, /ref: \$\{\{ inputs\.source_sha \}\}/);
+  assert.match(workflow, /git merge-base --is-ancestor "\$SOURCE_SHA" refs\/remotes\/origin\/main/);
+  assert.match(workflow, /environment:\s+name: userscript-production/);
   assert.match(workflow, /run: npm run check/);
   assert.match(workflow, /git push --atomic origin/);
-  assert.match(workflow, /group: release-\$\{\{ inputs\.script_id \}\}/);
+  assert.match(workflow, /group: promote-userscript-\$\{\{ inputs\.script_id \}\}/);
   assert.equal((workflow.match(/git push /g) || []).length, 1);
 });
 
-test("CI gates independent automatic promotions behind one protected approval", () => {
-  const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
+test("validation, publishing, and bootstrap workflows have distinct roles", () => {
+  const validationWorkflow = fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
+  const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "publish.yml"), "utf8");
+  const bootstrapWorkflow = fs.readFileSync(path.join(root, ".github", "workflows", "bootstrap.yml"), "utf8");
   const releaseWorkflow = fs.readFileSync(path.join(root, ".github", "workflows", "release.yml"), "utf8");
+
+  assert.match(validationWorkflow, /^name: Validate repository$/m);
+  assert.doesNotMatch(validationWorkflow, /detect-releases|contents: write|release\.yml/);
+
+  assert.match(workflow, /^name: Publish userscript updates$/m);
+  assert.match(workflow, /workflow_run:[\s\S]*?- Validate repository/);
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(workflow, /github\.event\.workflow_run\.event == 'push'/);
+  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
   assert.match(workflow, /vars\.USERSCRIPT_AUTO_RELEASE == 'enabled'/);
-  assert.match(workflow, /environment:\s+name: userscript-production/);
   assert.equal((workflow.match(/strategy:\s+fail-fast: false\s+matrix:/g) || []).length, 2);
   assert.equal((workflow.match(/uses: \.\/\.github\/workflows\/release\.yml/g) || []).length, 1);
   assert.match(workflow, /plan-releases:[\s\S]*?permissions:\s+contents: read[\s\S]*?--dry-run/);
-  assert.match(workflow, /approve-releases:[\s\S]*?- plan-releases/);
-  assert.match(workflow, /always\(\) && needs\.detect-releases\.outputs\.has_releases == 'true'/);
-  assert.match(workflow, /dry_run: false/);
+  assert.match(workflow, /needs\.plan-releases\.result == 'success'/);
   assert.match(workflow, /permissions:\s+contents: write/);
+
+  assert.match(bootstrapWorkflow, /^name: Bootstrap new userscript$/m);
+  assert.match(bootstrapWorkflow, /workflow_dispatch:/);
+  assert.match(bootstrapWorkflow, /GREASY_FORK_ID/);
+  assert.match(bootstrapWorkflow, /already has GreasyFork ID/);
+  assert.equal((bootstrapWorkflow.match(/uses: \.\/\.github\/workflows\/release\.yml/g) || []).length, 1);
+
   assert.match(releaseWorkflow, /workflow_call:/);
+  assert.doesNotMatch(releaseWorkflow, /workflow_dispatch:/);
 });

@@ -14,7 +14,7 @@
    - `@match`
    - `@grant`
    - `@connect`
-6. Run local validation and the GitHub Actions dry run before release.
+6. Run local validation before release; GitHub Actions creates the production plan.
 
 ## GitHub Raw URL Pattern
 
@@ -60,8 +60,8 @@ release/<script-id>
 
 GreasyFork syncs from that branch. `main` can contain development changes without immediately publishing them to users.
 
-For a script's first publication, run the GitHub Actions `Release userscript` workflow with the script ID and expected `@version`. Leave `dry_run` enabled first. The dry run validates all scripts and tooling tests, checks the remote release branch and tag, and does not change GitHub or GreasyFork state. After inspection, run it again with `dry_run` disabled, then create the GreasyFork page and record its numeric ID.
+For a script's first publication, run `Bootstrap new userscript` from `main` with the script ID and expected `@version`. It validates the repository, confirms that the script has no GreasyFork ID or existing release refs, and invokes `Promote userscript (internal)`, whose write-enabled job waits for `userscript-production` approval. Then create the GreasyFork page and record its numeric ID.
 
-After the script has a GreasyFork ID and the protected semi-automatic gate is enabled, merging an advanced version to `main` generates the same dry-run plan automatically. Approving the `userscript-production` environment once promotes all detected scripts independently. The manual workflow remains the recovery path.
+After the script has a GreasyFork ID and the protected publishing gate is enabled, a successful `Validate repository` run on `main` triggers `Publish userscript updates`. Advancing `@version` generates a dry-run plan automatically; when every candidate plan succeeds, approving the pending `userscript-production` deployments promotes the detected scripts independently. Published scripts have no direct manual release path—correct failed plans on `main`, or rerun transiently failed promotion jobs.
 
 A successful release-branch push only makes the configured source available and prompts the webhook check. Confirm the resulting version on GreasyFork separately; the workflow does not treat third-party synchronization latency as a successful Git operation.
