@@ -10,6 +10,9 @@ const {
   compareVersions,
   latestChangelogVersion,
   parseMetadata,
+  readManifest,
+  scriptCatalog,
+  syncRootReadmes,
   validateRepository,
 } = require("../tools/lib/userscripts");
 
@@ -26,9 +29,14 @@ test("SemVer comparison and changelog parsing are available for later migrations
 });
 
 test("the current repository remains valid after the tooling refactor", () => {
-  const result = validateRepository(path.join(__dirname, ".."));
+  const root = path.join(__dirname, "..");
+  const result = validateRepository(root);
   assert.deepEqual(result.errors, []);
-  assert.equal(result.scripts.length, 3);
+  assert.equal(result.scripts.length, readManifest(root).length);
+  assert.equal(
+    scriptCatalog(root, "zh-CN").find((script) => script.id === "shuiyuan-privacy-mask").name,
+    "水源隐私遮罩",
+  );
 });
 
 test("Claude and Gemini adapters import the canonical instructions", () => {
@@ -53,6 +61,13 @@ test("new scripts are strict while legacy scripts remain compatible", () => {
     fs.cpSync(path.join(__dirname, "..", "templates"), path.join(temporaryRoot, "templates"), { recursive: true });
     fs.writeFileSync(path.join(temporaryRoot, "scripts.json"), "[]\n", "utf8");
     fs.writeFileSync(path.join(temporaryRoot, "package.json"), JSON.stringify({ repository: "https://github.com/example/repo.git" }), "utf8");
+    for (const fileName of ["README.md", "README.zh-CN.md"]) {
+      fs.writeFileSync(
+        path.join(temporaryRoot, fileName),
+        `# Documentation\n\n<!-- BEGIN GENERATED SCRIPT LIST -->\n<!-- END GENERATED SCRIPT LIST -->\n`,
+        "utf8",
+      );
+    }
     createUserscript(temporaryRoot, {
       id: "demo-helper",
       name: "示例助手",
@@ -69,6 +84,8 @@ test("new scripts are strict while legacy scripts remain compatible", () => {
     assert.equal(generatedConfig.greasyForkId, null);
     assert.equal(generatedConfig.codeSyncUrl, "https://raw.githubusercontent.com/example/repo/release/demo-helper/scripts/demo-helper/demo-helper.user.js");
     assert.match(generatedSource, /^\/\/ @license\s+UNLICENSED$/m);
+    assert.match(fs.readFileSync(path.join(temporaryRoot, "README.md"), "utf8"), /Demo Helper/);
+    assert.match(fs.readFileSync(path.join(temporaryRoot, "README.zh-CN.md"), "utf8"), /示例助手/);
 
     const incomplete = validateRepository(temporaryRoot);
     assert.ok(incomplete.errors.some((error) => error.includes("scaffold implementation marker")));
@@ -91,6 +108,12 @@ test("new scripts are strict while legacy scripts remain compatible", () => {
     );
     assert.deepEqual(validateRepository(temporaryRoot).errors, []);
 
+    const rootReadmePath = path.join(temporaryRoot, "README.md");
+    fs.writeFileSync(rootReadmePath, fs.readFileSync(rootReadmePath, "utf8").replace("Demo Helper", "Stale Helper"), "utf8");
+    assert.ok(validateRepository(temporaryRoot).errors.some((error) => error.includes("generated script list is stale")));
+    syncRootReadmes(temporaryRoot);
+    assert.deepEqual(validateRepository(temporaryRoot).errors, []);
+
     const wildcardSource = implemented.replace("// @grant", "// @connect      *\n// @grant");
     fs.writeFileSync(entryPath, wildcardSource, "utf8");
     assert.ok(validateRepository(temporaryRoot).errors.some((error) => error.includes("wildcard @connect requires")));
@@ -108,6 +131,10 @@ test("new scripts are strict while legacy scripts remain compatible", () => {
     const unsafe = validateRepository(temporaryRoot).errors.join("\n");
     assert.match(unsafe, /global URL pattern/);
     assert.match(unsafe, /must not use eval/);
+
+    fs.rmSync(entryPath);
+    assert.doesNotThrow(() => validateRepository(temporaryRoot));
+    assert.ok(validateRepository(temporaryRoot).errors.some((error) => error.includes("Missing entry file")));
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }

@@ -11,6 +11,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "docs:sync": "node tools/sync-readmes.js",
     "new": "node tools/create-userscript.js",
     "release:detect": "node tools/detect-releases.js",
     "release:plan": "node tools/plan-release.js",

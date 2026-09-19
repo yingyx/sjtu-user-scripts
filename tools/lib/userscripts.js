@@ -6,6 +6,8 @@ const { spawnSync } = require("child_process");
 
 const METADATA_START = "// ==UserScript==";
 const METADATA_END = "// ==/UserScript==";
+const CATALOG_START = "<!-- BEGIN GENERATED SCRIPT LIST -->";
+const CATALOG_END = "<!-- END GENERATED SCRIPT LIST -->";
 const FORBIDDEN_ARRAY_PATTERNS = [
   { label: ".some(", pattern: /\.some\(/ },
   { label: ".filter(", pattern: /\.filter\(/ },
@@ -53,6 +55,95 @@ function parseMetadata(source) {
 
 function metadataValue(metadata, key) {
   return metadata?.get(key)?.[0] || "";
+}
+
+function escapeMarkdownTableCell(value) {
+  return String(value || "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+}
+
+function scriptCatalog(root, locale, scripts = readManifest(root)) {
+  const useChinese = locale === "zh-CN";
+  return scripts.map((script) => {
+    const source = fs.readFileSync(path.join(root, script.entry), "utf8");
+    const metadata = parseMetadata(source);
+    const localizedCatalog = script.catalog?.[locale] || {};
+    const name = localizedCatalog.name || (useChinese
+      ? metadataValue(metadata, "name") || script.name || script.id
+      : metadataValue(metadata, "name:en") || script.name || metadataValue(metadata, "name") || script.id);
+    const description = localizedCatalog.description || (useChinese
+      ? metadataValue(metadata, "description") || metadataValue(metadata, "description:en")
+      : metadataValue(metadata, "description:en") || metadataValue(metadata, "description"));
+    return { ...script, name, description };
+  });
+}
+
+function renderScriptCatalog(root, locale, scripts = readManifest(root)) {
+  const useChinese = locale === "zh-CN";
+  const lines = useChinese
+    ? ["| 脚本 | 入口文件 | 用途 |", "| --- | --- | --- |"]
+    : ["| Script | Entry file | Purpose |", "| --- | --- | --- |"];
+  for (const script of scriptCatalog(root, locale, scripts)) {
+    const name = escapeMarkdownTableCell(script.name);
+    const description = escapeMarkdownTableCell(script.description);
+    lines.push(`| [${name}](${script.readme}) | \`${script.entry}\` | ${description} |`);
+  }
+  return [CATALOG_START, ...lines, CATALOG_END].join("\n");
+}
+
+function replaceScriptCatalog(source, catalog, fileName) {
+  const startCount = source.split(CATALOG_START).length - 1;
+  const endCount = source.split(CATALOG_END).length - 1;
+  if (startCount !== 1 || endCount !== 1) {
+    throw new Error(`${fileName} must contain exactly one generated script list marker pair.`);
+  }
+  const pattern = new RegExp(`${CATALOG_START}[\\s\\S]*?${CATALOG_END}`);
+  return source.replace(pattern, catalog);
+}
+
+function rootReadmeDefinitions() {
+  return [
+    { fileName: "README.md", locale: "en" },
+    { fileName: "README.zh-CN.md", locale: "zh-CN" },
+  ];
+}
+
+function validateRootReadmes(root, scripts) {
+  const errors = [];
+  for (const definition of rootReadmeDefinitions()) {
+    const filePath = path.join(root, definition.fileName);
+    if (!fs.existsSync(filePath)) {
+      errors.push(`Missing root documentation: ${definition.fileName}`);
+      continue;
+    }
+    try {
+      const source = fs.readFileSync(filePath, "utf8");
+      const expected = renderScriptCatalog(root, definition.locale, scripts);
+      const synchronized = replaceScriptCatalog(source, expected, definition.fileName);
+      if (synchronized !== source) {
+        errors.push(`${definition.fileName} generated script list is stale; run npm run docs:sync.`);
+      }
+    } catch (error) {
+      errors.push(error.message);
+    }
+  }
+  return errors;
+}
+
+function syncRootReadmes(root) {
+  const scripts = readManifest(root);
+  const changed = [];
+  for (const definition of rootReadmeDefinitions()) {
+    const filePath = path.join(root, definition.fileName);
+    if (!fs.existsSync(filePath)) throw new Error(`Missing root documentation: ${definition.fileName}`);
+    const source = fs.readFileSync(filePath, "utf8");
+    const catalog = renderScriptCatalog(root, definition.locale, scripts);
+    const synchronized = replaceScriptCatalog(source, catalog, definition.fileName);
+    if (synchronized !== source) {
+      fs.writeFileSync(filePath, synchronized, "utf8");
+      changed.push(definition.fileName);
+    }
+  }
+  return changed;
 }
 
 function parseVersion(version) {
@@ -232,10 +323,28 @@ function validateRepository(root) {
       continue;
     }
     ids.add(script.id);
+    if (script.catalog !== undefined) {
+      if (!script.catalog || typeof script.catalog !== "object" || Array.isArray(script.catalog)) {
+        errors.push(`${script.id}: catalog must be an object keyed by locale.`);
+      } else {
+        for (const [locale, entry] of Object.entries(script.catalog)) {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+            errors.push(`${script.id}: catalog.${locale} must be an object.`);
+            continue;
+          }
+          for (const key of ["name", "description"]) {
+            if (entry[key] !== undefined && (typeof entry[key] !== "string" || !entry[key].trim() || /[\r\n]/.test(entry[key]))) {
+              errors.push(`${script.id}: catalog.${locale}.${key} must be a non-empty single line.`);
+            }
+          }
+        }
+      }
+    }
     const result = validateScript(root, script);
     errors.push(...result.errors);
     results.push({ ...script, version: result.version });
   }
+  errors.push(...validateRootReadmes(root, scripts));
   return { errors, scripts: results };
 }
 
@@ -246,6 +355,10 @@ module.exports = {
   parseMetadata,
   parseVersion,
   readManifest,
+  renderScriptCatalog,
   repositoryInfo,
+  scriptCatalog,
+  syncRootReadmes,
   validateRepository,
+  validateRootReadmes,
 };

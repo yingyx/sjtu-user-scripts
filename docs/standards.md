@@ -10,6 +10,7 @@ This document defines the engineering standards for userscripts in this reposito
 - New entries include `"standardsVersion": 1`; do not add it to an existing entry as part of unrelated work.
 - Keep a README, CHANGELOG, and `greasyfork.json` beside each entry file.
 - The published `.user.js` must remain standalone and readable.
+- Keep the generated script lists in `README.md` and `README.zh-CN.md` synchronized with `npm run docs:sync`.
 
 ## Metadata
 
@@ -45,6 +46,9 @@ Run the compatibility-preserving baseline locally:
 ```powershell
 npm run check
 ```
+
+Run `npm run docs:sync` first after adding a script or changing catalog metadata. Validation rejects stale generated root README lists.
+When a legacy script lacks localized metadata, an optional `catalog.<locale>` name or description in `scripts.json` may supply root-documentation text without changing the published userscript.
 
 The baseline checks current metadata requirements, required files, syntax, and script-specific compatibility rules, then runs the tooling unit tests. For `standardsVersion: 1`, it additionally enforces exact paths, SemVer/changelog alignment, metadata and URL scope, readable code, a 2 MB limit, GreasyFork configuration, privacy/install documentation, secret scanning, and removal of the scaffold marker.
 

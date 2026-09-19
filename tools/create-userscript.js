@@ -3,7 +3,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { readManifest, repositoryInfo } = require("./lib/userscripts");
+const { readManifest, repositoryInfo, syncRootReadmes } = require("./lib/userscripts");
 
 function parseArguments(argv) {
   const result = { matches: [] };
@@ -68,6 +68,14 @@ function createUserscript(root, options) {
     ["greasyfork.json.tmpl", "greasyfork.json"],
   ];
 
+  const manifestPath = path.join(root, "scripts.json");
+  const originalManifest = fs.readFileSync(manifestPath, "utf8");
+  const rootReadmes = ["README.md", "README.zh-CN.md"];
+  const originalReadmes = new Map(rootReadmes.map((fileName) => [
+    fileName,
+    fs.existsSync(path.join(root, fileName)) ? fs.readFileSync(path.join(root, fileName), "utf8") : null,
+  ]));
+
   fs.mkdirSync(targetDirectory, { recursive: false });
   try {
     for (const [templateName, outputName] of files) {
@@ -84,9 +92,14 @@ function createUserscript(root, options) {
       standardsVersion: 1,
     });
     scripts.sort((left, right) => left.id.localeCompare(right.id, "en"));
-    fs.writeFileSync(path.join(root, "scripts.json"), `${JSON.stringify(scripts, null, 2)}\n`, "utf8");
+    fs.writeFileSync(manifestPath, `${JSON.stringify(scripts, null, 2)}\n`, "utf8");
+    syncRootReadmes(root);
   } catch (error) {
     fs.rmSync(targetDirectory, { recursive: true, force: true });
+    fs.writeFileSync(manifestPath, originalManifest, "utf8");
+    for (const [fileName, source] of originalReadmes) {
+      if (source !== null) fs.writeFileSync(path.join(root, fileName), source, "utf8");
+    }
     throw error;
   }
   return `Created scripts/${options.id} and registered standardsVersion 1.`;

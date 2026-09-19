@@ -37,6 +37,6 @@ The Agent derives the internal scaffold arguments, runs the generator, implement
 npm run new -- --id shuiyuan-op-only --name "Shuiyuan Original Poster Only" --name-en "Shuiyuan Original Poster Only" --description "Shows only posts by the topic author." --description-en "Shows only posts by the topic author." --match "https://shuiyuan.sjtu.edu.cn/t/*"
 ```
 
-The generator refuses duplicate IDs, non-kebab-case IDs, global matches, incomplete arguments, and existing target directories. It creates the four required files and registers the new script with `standardsVersion: 1`. The implementation marker deliberately makes strict validation fail until real behavior replaces it.
+The generator refuses duplicate IDs, non-kebab-case IDs, global matches, incomplete arguments, and existing target directories. It creates the four required files, registers the new script with `standardsVersion: 1`, and refreshes the generated script lists in both root README files. The implementation marker deliberately makes strict validation fail until real behavior replaces it.
 
-The tooling test suite exercises this path end to end in a temporary repository: generation must produce neutral `UNLICENSED` metadata and valid GreasyFork URLs, incomplete code and documentation must fail, and a completed scaffold must pass strict repository validation.
+The tooling test suite exercises this path end to end in a temporary repository: generation must produce neutral `UNLICENSED` metadata, valid GreasyFork URLs, and synchronized bilingual catalogs; incomplete code, documentation, or catalog output must fail; and a completed scaffold must pass strict repository validation.

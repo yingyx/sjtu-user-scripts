@@ -2,12 +2,17 @@
 
 Browser userscripts for SJTU-specific workflows.
 
+English | [简体中文](README.zh-CN.md)
+
 ## Scripts
 
+<!-- BEGIN GENERATED SCRIPT LIST -->
 | Script | Entry file | Purpose |
 | --- | --- | --- |
-| SJTU Course Assistant Plus | `scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js` | Enhances SJTU course selection pages with time-conflict filtering and on-demand review summaries. |
-| Shuiyuan Privacy Mask | `scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js` | Hides your own avatar, username, display name, and profile identity on Shuiyuan with a sidebar toggle. |
+| [Shuiyuan Deep Search](scripts/shuiyuan-deep-search/README.md) | `scripts/shuiyuan-deep-search/shuiyuan-deep-search.user.js` | Decompose questions, search and read Shuiyuan topics in parallel, produce cited research reports, and support follow-up questions. |
+| [Shuiyuan Privacy Mask](scripts/shuiyuan-privacy-mask/README.md) | `scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js` | Hide your own avatar, username, display name, and profile identity on Shuiyuan, with a native-looking sidebar toggle. |
+| [SJTU Course Assistant Plus](scripts/sjtu-course-assistant-plus/README.md) | `scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js` | Enhance SJTU course selection with conflict filtering, jCourse reviews, and manageable LLM summary providers. |
+<!-- END GENERATED SCRIPT LIST -->
 
 ## Repository Layout
 
@@ -37,12 +42,7 @@ Use `shared/` only for development notes or source snippets that will be copied 
 - Keep final published files as standalone `.user.js` files.
 - Avoid browser-extension-only APIs unless a script explicitly targets an extension build.
 - Keep SJTU page-specific compatibility constraints documented in the script folder README.
-- Test syntax before publishing:
-
-```powershell
-node --check scripts\sjtu-course-assistant-plus\sjtu-course-assistant-plus.user.js
-node --check scripts\shuiyuan-privacy-mask\shuiyuan-privacy-mask.user.js
-```
+- Use the repository-wide check below instead of maintaining per-script validation commands here.
 
 ## Development Checks
 
@@ -51,6 +51,8 @@ Run the repository validation and tooling tests locally:
 ```powershell
 npm run check
 ```
+
+The script table in both root README files is generated from `scripts.json` and userscript metadata. Run `npm run docs:sync` after changing registration or metadata; `npm run check` rejects stale generated lists.
 
 Every registered script currently uses standards-version-1 validation, including metadata, documentation, security, compatibility, and GreasyFork configuration checks.
 
