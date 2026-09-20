@@ -8,6 +8,8 @@ SJTU Course Assistant Plus enhances the SJTU course selection page with time-con
 
 - Marks teaching classes that conflict with your already selected courses.
 - Can hide conflicting classes and courses.
+- Saves the current course type, keyword, and advanced filters as reusable one-click filter conditions.
+- Checks unmet general-education categories from the SJTU academic-progress page and recommends filter conditions without storing personal academic records.
 - Allows multiple course panels to remain open; opening or closing one panel no longer collapses the others.
 - Adds a jCourse community link for matched courses.
 - Shows the jCourse average rating when a course can be matched.
@@ -33,10 +35,17 @@ After the page loads, a toolbar named `SJTU Course Assistant Plus` appears near 
 Use the toolbar to:
 
 - `Hide conflicting courses`: hide teaching classes or course panels that conflict with courses you have already selected.
+- `Filter conditions`: save the current filters, apply or delete saved conditions, and review suggestions for unmet general-education categories.
 - `Rescan`: scan the current course list again after searching, expanding panels, or changing selected courses.
 - `Settings`: manage LLM providers, API keys, models, summary dimensions, and conflict hiding.
 
 The script scans the selected-course schedule and compares it with the teaching classes currently shown on the page. Conflict labels are shown directly in the course list.
+
+## Filter Conditions And General-Education Suggestions
+
+Open `Filter conditions` after configuring the native course-selection filters. A saved condition records the active course-type tab, search keyword, selected advanced conditions, and supported custom filter inputs. Applying it resets the current native conditions, restores the saved values, and runs the native query. Saved conditions also appear in a compact selector between the native query and reset buttons; its size follows the native query button as the layout changes, and selecting a condition applies it immediately. Manually clicking the native reset button also runs a query after the filters are cleared.
+
+When the filter-condition panel opens, the script makes a same-origin request to `Student Academic Progress Inquiry`. It compares only the `General Education Core Module` category requirements with earned and exempted credits. For each unmet category, it can create a suggested condition using the current campus, `General Education`, `General Education Core Course`, the matching category, and `Available` when those native options exist. The suggestion is not saved until you click `Create condition`.
 
 ## jCourse Links And Ratings
 
@@ -106,11 +115,12 @@ The script stores settings and caches in your userscript manager storage.
 
 It may request:
 
+- `i.sjtu.edu.cn`: when you open the filter-condition panel, to read the current account's general-education credit requirements through the university's own same-origin academic-progress endpoint.
 - `course.sjtu.plus` when you click jCourse links or summary buttons.
 - `api.deepseek.com` when you generate a summary with built-in DeepSeek.
 - Any LLM endpoint you explicitly configure, when you generate a summary with it.
 
-Summary requests send the active provider up to 12 jCourse reviews plus course, teacher, rating, semester, and review-time context. Provider settings, API keys, and caches stay in userscript-manager local storage. Normal page scanning sends no course data to an LLM.
+Summary requests send the active provider up to 12 jCourse reviews plus course, teacher, rating, semester, and review-time context. Provider settings, API keys, saved filter conditions, and caches stay in userscript-manager local storage. Academic-progress responses are processed in memory; the script does not store names, student IDs, grades, or course records. Normal page scanning sends no course data to an LLM.
 
 ## Troubleshooting
 
@@ -131,4 +141,4 @@ If the page layout changes after an SJTU system update, the script may need an u
 
 The repository includes `tests/fixtures/sjtu-course-assistant-plus-page.html`. Its course-panel structure was extracted from the live SJTU page through CDP, but all course, teacher, and enrollment content has been replaced with test data and network requests are disabled.
 
-Run `python -m http.server 8765` from the repository root, then open `http://127.0.0.1:8765/tests/fixtures/sjtu-course-assistant-plus-page.html` to load the userscript from the working tree and test conflict labels, single- and multi-class layouts, and multiple simultaneously open courses. Settings are stored only in the fixture page's own `localStorage`.
+Run `python -m http.server 8765` from the repository root, then open `http://127.0.0.1:8765/tests/fixtures/sjtu-course-assistant-plus-page.html` to load the userscript from the working tree and test saved filter conditions, general-education recommendations, conflict labels, single- and multi-class layouts, and multiple simultaneously open courses. Settings are stored only in the fixture page's own `localStorage`.

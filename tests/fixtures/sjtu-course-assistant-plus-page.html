@@ -6,7 +6,7 @@
   <title>交大选课助手+ 离线测试页</title>
   <style>
     body { margin: 0; padding: 24px; background: #f4f7f9; color: #333; font: 14px/1.5 "Microsoft YaHei", sans-serif; }
-    #searchBox, #contentBox, .right_div, .fixture-note { max-width: 1280px; margin: 0 auto 14px; }
+    #searchBox, #contentBox, #nav_tab, .right_div, .fixture-note { max-width: 1280px; margin: 0 auto 14px; }
     .fixture-note { padding: 12px 14px; border: 1px solid #bce8f1; border-radius: 5px; background: #d9edf7; color: #31708f; }
     .panel { margin-bottom: 12px; border: 1px solid #bce8f1; border-radius: 4px; background: #fff; }
     .panel-heading { position: relative; padding: 10px 15px; background: #d9edf7; cursor: pointer; }
@@ -19,13 +19,38 @@
     th, td { padding: 8px; border: 1px solid #ddd; text-align: left; vertical-align: top; }
     .right_div { display: none; }
     button { font: inherit; }
+    .searchbox { padding: 12px; border: 1px solid #ddd; border-radius: 5px; background: #fff; }
+    .search-filter, .selected-attr, .condition-row { margin-bottom: 8px; }
+    .selecteds { display: flex; flex-wrap: wrap; gap: 6px; }
+    .selected { padding: 3px 7px; border-radius: 3px; background: #eef6fb; }
+    .condition-row .form-group { display: grid; grid-template-columns: 110px 1fr; gap: 8px; }
+    .items ul, #nav_tab { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .items li a, #nav_tab a { display: block; padding: 4px 8px; border: 1px solid #ccd6dd; border-radius: 3px; background: #fff; color: #337ab7; text-decoration: none; }
+    .items a.selectedValue, #nav_tab li.active a { border-color: #337ab7; background: #337ab7; color: #fff; }
   </style>
 </head>
 <body>
   <div class="fixture-note">
     <strong>离线脱敏测试页</strong>：课程面板结构由 CDP 从真实选课页面提取；所有课程、教师和选课信息均为测试数据，外部网络请求已禁用。
   </div>
-  <div id="searchBox"></div>
+  <input type="hidden" id="xqh_id" value="02">
+  <div id="searchBox">
+    <div class="form-horizontal sl_all_form searchbox">
+      <div class="row search-filter"><input type="text" name="searchInput" class="form-control filter-input" placeholder="课程号/名称/教师"><button type="button" name="query">查询</button><button type="button" name="reset">重置条件</button></div>
+      <div class="row selected-attr"><strong>已选条件：</strong><div class="selecteds"></div></div>
+      <div class="row condition-item">
+        <div class="condition-row"><div class="form-group"><span class="title">校区：</span><div class="items" name="xq_list"><ul><li index="xq_list_02"><a href="javascript:void(0);">闵行</a></li><li index="xq_list_01"><a href="javascript:void(0);">徐汇</a></li></ul></div></div></div>
+        <div class="condition-row"><div class="form-group"><span class="title">课程性质：</span><div class="items" name="kcxzdm_list"><ul><li index="kcxzdm_list_06"><a href="javascript:void(0);">通识核心课程</a></li><li index="kcxzdm_list_03"><a href="javascript:void(0);">公共选修课</a></li></ul></div></div></div>
+        <div class="condition-row"><div class="form-group"><span class="title">课程归属：</span><div class="items" name="kcgs_list"><ul><li index="kcgs_list_42"><a href="javascript:void(0);">人文学科</a></li><li index="kcgs_list_43"><a href="javascript:void(0);">社会科学</a></li><li index="kcgs_list_83"><a href="javascript:void(0);">自然科学</a></li><li index="kcgs_list_21"><a href="javascript:void(0);">人文学科(21级前)/艺术修养(22级后)</a></li><li index="kcgs_list_22"><a href="javascript:void(0);">工程科学与技术(21级前)/艺术修养(22级后)</a></li></ul></div></div></div>
+        <div class="condition-row"><div class="form-group"><span class="title">有无余量：</span><div class="items" name="yl_list"><ul><li index="yl_list_1"><a href="javascript:void(0);">有</a></li><li index="yl_list_0"><a href="javascript:void(0);">无</a></li></ul></div></div></div>
+      </div>
+    </div>
+  </div>
+  <ul id="nav_tab">
+    <li><a id="tab_kklx_30_fixture" href="javascript:void(0);">任选课程</a></li>
+    <li class="active"><a id="tab_kklx_10_fixture" href="javascript:void(0);">通识课</a></li>
+    <li><a id="tab_kklx_11_fixture" href="javascript:void(0);">公共选修课</a></li>
+  </ul>
   <div id="contentBox"></div>
   <div class="right_div">
     <ul class="outer_xkxx_list">
@@ -104,12 +129,67 @@
         }
       });
 
+      document.querySelector("#nav_tab").addEventListener("click", (event) => {
+        const tab = event.target.closest && event.target.closest("[id^='tab_kklx_']");
+        if (!tab) return;
+        const items = document.querySelectorAll("#nav_tab li");
+        for (let i = 0; i < items.length; i += 1) items[i].classList.remove("active");
+        tab.parentElement.classList.add("active");
+      });
+
+      document.querySelector("#searchBox").addEventListener("click", (event) => {
+        const option = event.target.closest && event.target.closest(".items li[index] a");
+        if (option) {
+          const item = option.parentElement;
+          const index = item.getAttribute("index");
+          const existing = document.querySelector(`#searchBox .selecteds .selected[index="${index}"]`);
+          if (existing) {
+            existing.remove();
+            option.classList.remove("selectedValue");
+          } else {
+            const title = item.closest(".condition-row").querySelector(".title").textContent.trim();
+            const chip = document.createElement("div");
+            chip.className = "selected";
+            chip.setAttribute("index", index);
+            chip.innerHTML = `<a href="javascript:void(0);">${title}${option.textContent.trim()}</a>`;
+            document.querySelector("#searchBox .selecteds").appendChild(chip);
+            option.classList.add("selectedValue");
+          }
+          return;
+        }
+        if (event.target.closest && event.target.closest("button[name='reset']")) {
+          document.querySelector("#searchBox .selecteds").innerHTML = "";
+          const selectedOptions = document.querySelectorAll("#searchBox .selectedValue");
+          for (let i = 0; i < selectedOptions.length; i += 1) selectedOptions[i].classList.remove("selectedValue");
+          document.querySelector("#searchBox input[name='searchInput']").value = "";
+          return;
+        }
+        if (event.target.closest && event.target.closest("button[name='query']")) {
+          const selected = document.querySelector("#searchBox .selecteds").textContent.trim() || "无高级条件";
+          document.querySelector(".fixture-note").setAttribute("data-last-query", selected);
+        }
+      });
+
       window.GM_getValue = (key, fallback) => localStorage.getItem(key) ?? fallback;
       window.GM_setValue = (key, value) => localStorage.setItem(key, value);
       window.GM_xmlhttpRequest = (options) => window.setTimeout(() => {
         if (options && options.onerror) options.onerror({ status: 0 });
       }, 0);
       window.open = () => null;
+      window.fetch = async (url, options = {}) => {
+        const value = String(url || "");
+        if (value.includes("doType=query")) {
+          if (String(options.method || "GET").toUpperCase() !== "POST") return new Response("", { status: 405 });
+          return new Response(JSON.stringify({ items: [
+            { level3: '<a href="#general">通识核心类模块</a>(8 / 6)', level4: '<a href="#humanities">人文学科</a>', yqzdxf: "2", hdxf: "2", hmxf: "0" },
+            { level3: "", level4: '<a href="#science">自然科学</a>', yqzdxf: "2", hdxf: "0", hmxf: "0" },
+          ] }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+        if (value.includes("ckXsXyxxHtmlView.html")) {
+          return new Response('<!doctype html><input id="xh_id" value="fixture-student">', { status: 200, headers: { "Content-Type": "text/html" } });
+        }
+        return new Response("", { status: 404 });
+      };
     })();
   </script>
   <script src="../../scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js"></script>

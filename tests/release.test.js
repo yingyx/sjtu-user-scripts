@@ -40,30 +40,30 @@ test("release argument parser supports an explicit dry run", () => {
 });
 
 test("release plan is derived from validated repository metadata", () => {
-  const version = currentVersion("sjtu-course-assistant-plus");
+  const version = currentVersion("shuiyuan-privacy-mask");
   const plan = createReleasePlan(root, {
-    scriptId: "sjtu-course-assistant-plus",
+    scriptId: "shuiyuan-privacy-mask",
     expectedVersion: version,
     sourceRef: "refs/heads/main",
     commitSha: "a".repeat(40),
     dryRun: true,
   });
-  assert.equal(plan.releaseBranch, "release/sjtu-course-assistant-plus");
-  assert.equal(plan.tag, `sjtu-course-assistant-plus-v${version}`);
-  assert.equal(plan.greasyForkId, 581299);
+  assert.equal(plan.releaseBranch, "release/shuiyuan-privacy-mask");
+  assert.equal(plan.tag, `shuiyuan-privacy-mask-v${version}`);
+  assert.equal(plan.greasyForkId, 591032);
   assert.ok(plan.releaseNotes.length > 0);
   assert.doesNotMatch(plan.releaseNotes, /^##\s+/m);
   assert.match(plan.sha256, /^[0-9a-f]{64}$/);
-  assert.match(githubOutput(plan, "release-notes.md"), /^release_branch=release\/sjtu-course-assistant-plus$/m);
+  assert.match(githubOutput(plan, "release-notes.md"), /^release_branch=release\/shuiyuan-privacy-mask$/m);
   assert.match(formatSummary(plan), /Dry run \(no refs will be changed\)/);
 });
 
 test("release plan rejects unsafe refs, unknown scripts, and version mismatches", () => {
-  const version = currentVersion("sjtu-course-assistant-plus");
+  const version = currentVersion("shuiyuan-privacy-mask");
   const parsed = parseVersion(version);
   const mismatchedVersion = `${parsed.major + 1}.0.0`;
   assert.throws(() => createReleasePlan(root, {
-    scriptId: "sjtu-course-assistant-plus",
+    scriptId: "shuiyuan-privacy-mask",
     expectedVersion: version,
     sourceRef: "refs/heads/feature",
   }), /must run from refs\/heads\/main/);
@@ -72,7 +72,7 @@ test("release plan rejects unsafe refs, unknown scripts, and version mismatches"
     expectedVersion: version,
   }), /Unknown script_id/);
   assert.throws(() => createReleasePlan(root, {
-    scriptId: "sjtu-course-assistant-plus",
+    scriptId: "shuiyuan-privacy-mask",
     expectedVersion: mismatchedVersion,
   }), /Version mismatch/);
 });
@@ -113,8 +113,8 @@ test("release output files contain only the selected version notes", () => {
 
 test("GitHub output and internal promotion preserve the release safety gates", () => {
   const plan = createReleasePlan(root, {
-    scriptId: "sjtu-course-assistant-plus",
-    expectedVersion: currentVersion("sjtu-course-assistant-plus"),
+    scriptId: "shuiyuan-privacy-mask",
+    expectedVersion: currentVersion("shuiyuan-privacy-mask"),
     dryRun: true,
   });
   assert.throws(() => githubOutput({ ...plan, releaseName: "unsafe\noutput" }), /must be a single line/);

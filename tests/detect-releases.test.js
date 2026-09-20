@@ -65,14 +65,18 @@ test("detector creates an independent matrix only for advanced scripts", () => {
   const released = new Map(sources);
   released.set(
     "sjtu-course-assistant-plus",
-    sources.get("sjtu-course-assistant-plus").replace("@version      0.9.1", "@version      0.9.0"),
+    sources.get("sjtu-course-assistant-plus").replace("@version      0.10.0-rc.1", "@version      0.9.1"),
+  );
+  released.set(
+    "shuiyuan-privacy-mask",
+    sources.get("shuiyuan-privacy-mask").replace("@version      0.2.0", "@version      0.1.9"),
   );
   const result = detectReleases(root, {
     sourceRef: "refs/heads/main",
     commitSha: "a".repeat(40),
     git: fakeGit(released),
   });
-  assert.deepEqual(result.candidates, [{ script_id: "sjtu-course-assistant-plus", version: "0.9.1" }]);
+  assert.deepEqual(result.candidates, [{ script_id: "shuiyuan-privacy-mask", version: "0.2.0" }]);
   assert.deepEqual(result.matrix, { include: result.candidates });
   assert.equal(result.hasReleases, true);
   assert.match(formatSummary(result), /1 release candidate\(s\) require approval/);

@@ -2,9 +2,9 @@
 // @name         交大选课助手+
 // @name:en      SJTU Course Assistant Plus
 // @namespace    https://course.sjtu.plus/
-// @version      0.9.1
-// @description  增强交大选课页面，支持冲突筛选、选课社区评价和可管理的 LLM 总结来源。
-// @description:en  Enhance SJTU course selection with conflict filtering, jCourse reviews, and manageable LLM summary providers.
+// @version      0.10.0-rc.1
+// @description  增强交大选课页面，支持筛选条件、冲突筛选、选课社区评价和可管理的 LLM 总结来源。
+// @description:en  Enhance SJTU course selection with saved filter conditions, conflict filtering, jCourse reviews, and manageable LLM summary providers.
 // @author       Codex
 // @license      UNLICENSED
 // @supportURL   https://github.com/yingyx/sjtu-user-scripts/issues
@@ -30,6 +30,9 @@
   const SCAN_DEBOUNCE_MS = 350;
   const EXPAND_WAIT_TIMEOUT_MS = 4000;
   const EXPAND_WAIT_INTERVAL_MS = 150;
+  const ACADEMIC_PROGRESS_PAGE = "/xjyj/xsxyqk_ckXsXyxxHtmlView.html?gnmkdm=N551225&layout=default";
+  const ACADEMIC_PROGRESS_API = "/xjyj/xsxyqk_ckXsXyxxHtmlView.html?doType=query&xh_id=";
+  const GENERAL_EDUCATION_SECTION = "通识核心类模块";
   const DEFAULT_DIMENSIONS = [
     { type: "yesno", label: "是否点名", note: "若能判断线上/线下，必须说明线上或线下" },
     { type: "yesno", label: "是否有互动", note: "" },
@@ -102,7 +105,59 @@
       providers,
       jcourseApiKey: typeof saved.jcourseApiKey === "string" ? saved.jcourseApiKey : "",
       dimensions: normalizeDimensionSettings(saved.dimensions),
+      presets: normalizePresetSettings(saved.presets),
     };
+  }
+
+  function normalizePresetSettings(value) {
+    if (!Array.isArray(value)) return [];
+    const out = [];
+    for (let i = 0; i < value.length && out.length < 30; i += 1) {
+      const preset = normalizePreset(value[i], i);
+      if (preset) out.push(preset);
+    }
+    return out;
+  }
+
+  function normalizePreset(value, index) {
+    if (!value || typeof value !== "object") return null;
+    const label = normalizeText(value.label || value.name || "").slice(0, 40);
+    if (!label) return null;
+    const filters = [];
+    const sourceFilters = Array.isArray(value.filters) ? value.filters : [];
+    for (let i = 0; i < sourceFilters.length; i += 1) {
+      const item = sourceFilters[i];
+      if (!item || typeof item !== "object") continue;
+      const indexValue = String(item.index || "").trim();
+      const group = String(item.group || "").trim();
+      if (!indexValue || !group) continue;
+      filters.push({
+        index: indexValue.slice(0, 120),
+        group: group.slice(0, 80),
+        value: String(item.value || "").slice(0, 120),
+        label: normalizeText(item.label || item.text || indexValue).slice(0, 80),
+      });
+    }
+    const inputs = [];
+    const sourceInputs = Array.isArray(value.inputs) ? value.inputs : [];
+    for (let i = 0; i < sourceInputs.length; i += 1) {
+      const group = String(sourceInputs[i] && sourceInputs[i].group || "").trim();
+      const inputValue = normalizeText(sourceInputs[i] && sourceInputs[i].value || "").slice(0, 120);
+      if (group && inputValue) inputs.push({ group, value: inputValue });
+    }
+    return {
+      id: normalizePresetId(value.id) || `preset-${Date.now()}-${index}`,
+      label,
+      tabCode: String(value.tabCode || "").slice(0, 12),
+      tabLabel: normalizeText(value.tabLabel || "").slice(0, 60),
+      search: normalizeText(value.search || "").slice(0, 120),
+      filters,
+      inputs,
+    };
+  }
+
+  function normalizePresetId(value) {
+    return String(value || "").trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
   }
 
   function normalizeProviderSettings(saved) {
@@ -291,6 +346,35 @@
         cursor: default;
         opacity: 0.65;
       }
+      .jcp-preset-quick {
+        display: inline-flex;
+        align-items: center;
+        margin-left: -1px;
+        vertical-align: middle;
+      }
+      .jcp-preset-quick-select {
+        width: auto;
+        min-width: 112px;
+        max-width: 210px;
+        height: 24px;
+        box-sizing: border-box;
+        border: 1px solid #ccc;
+        border-radius: 0;
+        background: #fff;
+        color: #333;
+        padding: 2px 24px 2px 8px;
+        font-size: 12px;
+        line-height: 18px;
+        cursor: pointer;
+      }
+      .jcp-preset-quick-select:focus {
+        position: relative;
+        z-index: 2;
+        border-color: #720808;
+        outline: 0;
+        box-shadow: none;
+      }
+      .jcp-preset-quick-select:disabled { cursor: default; background: #f5f5f5; color: #999; }
       .jcp-badge {
         display: inline-block;
         margin-left: 6px;
@@ -625,6 +709,53 @@
       .jcp-provider-grid input { margin-top: 3px; }
       .jcp-provider-endpoint,
       .jcp-provider-model-field { min-width: 0; }
+      .jcp-preset-panel { width: min(700px, calc(100vw - 48px)); }
+      .jcp-preset-create {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) auto;
+        gap: 8px;
+        align-items: end;
+        margin-top: 9px;
+      }
+      .jcp-preset-create label { margin: 0; color: #667782; font-size: 12px; font-weight: 500; }
+      .jcp-preset-create input { margin-top: 4px; }
+      .jcp-preset-list,
+      .jcp-recommendation-list { display: grid; gap: 8px; margin-top: 9px; }
+      .jcp-preset-card,
+      .jcp-recommendation-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 11px;
+        border: 1px solid #d8e1e8;
+        border-radius: 6px;
+        background: #fff;
+      }
+      .jcp-recommendation-card { border-color: #cfe3cf; background: #fbfef9; }
+      .jcp-preset-main { flex: 1 1 auto; min-width: 0; }
+      .jcp-preset-main strong { display: block; color: #245269; font-size: 13px; }
+      .jcp-recommendation-card .jcp-preset-main strong { color: #356635; }
+      .jcp-preset-summary { margin-top: 4px; color: #71808a; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+      .jcp-preset-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+      .jcp-preset-empty {
+        padding: 12px;
+        border: 1px dashed #ccd7df;
+        border-radius: 6px;
+        color: #71808a;
+        text-align: center;
+        background: #fafcfd;
+      }
+      .jcp-credit-gap {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 1px 6px;
+        border-radius: 9px;
+        background: #fff0d5;
+        color: #8a6d3b;
+        font-size: 11px;
+        font-weight: 400;
+      }
+      .jcp-recommendation-status { margin: 8px 0 0; }
       .jcp-panel-footer {
         position: sticky;
         bottom: 0;
@@ -642,6 +773,9 @@
         .panel-heading.kc_head { padding-right: 12px; }
         .jcp-heading-right { position: static; width: auto; justify-content: flex-start; margin-top: 6px; }
         .jcp-provider-grid { grid-template-columns: 1fr; }
+        .jcp-preset-create { grid-template-columns: 1fr; }
+        .jcp-preset-card, .jcp-recommendation-card { align-items: flex-start; flex-direction: column; }
+        .jcp-preset-actions { width: 100%; }
         .jcp-summary-grid { grid-template-columns: 1fr; }
       }
     `;
@@ -649,7 +783,10 @@
   }
 
   function ensureToolbar() {
-    if (document.querySelector(".jcp-toolbar")) return;
+    if (document.querySelector(".jcp-toolbar")) {
+      ensurePresetQuickSelect();
+      return;
+    }
     const toolbar = document.createElement("div");
     toolbar.className = "jcp-toolbar";
     toolbar.innerHTML = `
@@ -660,6 +797,7 @@
         <input type="checkbox" class="jcp-hide-toggle">
         隐藏冲突
       </label>
+      <button type="button" class="jcp-presets">筛选条件</button>
       <button type="button" class="jcp-primary jcp-rescan">重新扫描</button>
       <button type="button" class="jcp-settings">设置</button>
     `;
@@ -675,8 +813,100 @@
       saveSettings();
       scheduleScan();
     });
+    toolbar.querySelector(".jcp-presets").addEventListener("click", openPresetPanel);
     toolbar.querySelector(".jcp-rescan").addEventListener("click", () => scanNow());
     toolbar.querySelector(".jcp-settings").addEventListener("click", openSettingsPanel);
+    ensurePresetQuickSelect();
+  }
+
+  function ensurePresetQuickSelect() {
+    const searchBox = document.querySelector("#searchBox");
+    const query = searchBox ? searchBox.querySelector("button[name='query']") : null;
+    if (!query || !query.parentElement) return;
+    let select = searchBox.querySelector(".jcp-preset-quick-select");
+    if (!select) {
+      const wrapper = document.createElement("span");
+      wrapper.className = "jcp-preset-quick";
+      select = document.createElement("select");
+      select.className = "jcp-preset-quick-select";
+      select.setAttribute("aria-label", "筛选条件");
+      select.title = "选择后立即应用并查询";
+      wrapper.appendChild(select);
+      query.insertAdjacentElement("afterend", wrapper);
+      select.addEventListener("change", async () => {
+        const preset = presetById(select.value);
+        if (!preset) return;
+        select.disabled = true;
+        await applyPreset(preset);
+        syncPresetQuickSelect();
+      });
+    }
+    const wrapper = select.closest(".jcp-preset-quick");
+    if (wrapper && query.nextElementSibling !== wrapper) query.insertAdjacentElement("afterend", wrapper);
+    syncPresetQuickSelectMetrics(select, query);
+    observePresetQuickSelectMetrics(wrapper, select, query);
+    ensureResetAutoQuery(searchBox);
+    syncPresetQuickSelect();
+  }
+
+  function syncPresetQuickSelectMetrics(select, query) {
+    if (!select || !query) return;
+    const height = query.offsetHeight;
+    const style = window.getComputedStyle(query);
+    if (height > 0) select.style.height = `${height}px`;
+    select.style.fontSize = style.fontSize;
+    select.style.lineHeight = style.lineHeight;
+    select.style.paddingTop = style.paddingTop;
+    select.style.paddingBottom = style.paddingBottom;
+  }
+
+  function observePresetQuickSelectMetrics(wrapper, select, query) {
+    if (!wrapper || wrapper._jcpMetricSync) return;
+    const sync = () => syncPresetQuickSelectMetrics(select, query);
+    wrapper._jcpMetricSync = sync;
+    window.addEventListener("resize", sync, { passive: true });
+    if (typeof ResizeObserver === "function") {
+      wrapper._jcpResizeObserver = new ResizeObserver(sync);
+      wrapper._jcpResizeObserver.observe(query);
+    }
+  }
+
+  function ensureResetAutoQuery(searchBox) {
+    const reset = searchBox ? searchBox.querySelector("button[name='reset']") : null;
+    if (!reset || reset.dataset.jcpAutoQueryBound === "1") return;
+    reset.dataset.jcpAutoQueryBound = "1";
+    reset.addEventListener("click", (event) => {
+      if (!event.isTrusted) return;
+      window.setTimeout(async () => {
+        await waitForCondition(() => {
+          const selected = searchBox.querySelector(".selecteds .selected[index]");
+          const input = searchBox.querySelector("input[name='searchInput']");
+          return !selected && (!input || !input.value);
+        }, 1500);
+        const query = searchBox.querySelector("button[name='query']");
+        if (query && !query.disabled) clickElement(query);
+      }, 0);
+    });
+  }
+
+  function syncPresetQuickSelect() {
+    const select = document.querySelector("#searchBox .jcp-preset-quick-select");
+    if (!select) return;
+    const presets = state.settings.presets || [];
+    select.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = presets.length ? "筛选条件" : "暂无筛选条件";
+    select.appendChild(placeholder);
+    for (let i = 0; i < presets.length; i += 1) {
+      const option = document.createElement("option");
+      option.value = presets[i].id;
+      option.textContent = presets[i].label;
+      option.title = presetSummaryText(presets[i]);
+      select.appendChild(option);
+    }
+    select.value = "";
+    select.disabled = !presets.length;
   }
 
   function syncSjtuExpandToggle(toggle, expanded) {
@@ -705,6 +935,523 @@
         syncSjtuExpandToggle(expanded[i].toggle, true);
       }
     }, 0);
+  }
+
+  function openPresetPanel() {
+    closeSettingsPanel();
+    const mask = document.createElement("div");
+    mask.className = "jcp-panel-mask";
+    const panel = document.createElement("div");
+    panel.className = "jcp-panel jcp-preset-panel";
+    const snapshot = captureCurrentPreset("");
+    panel.innerHTML = `
+      <div class="jcp-panel-header">
+        <h4>交大选课助手+ 筛选条件</h4>
+        <button type="button" class="jcp-icon-close jcp-preset-close" title="关闭" aria-label="关闭">×</button>
+      </div>
+      <div class="jcp-panel-body">
+        <section class="jcp-section">
+          <div class="jcp-section-title"><h5>保存当前筛选</h5></div>
+          <p class="jcp-muted">保存当前课程类型、关键字和高级条件，以后一键恢复并查询。</p>
+          <div class="jcp-preset-create">
+            <label>条件名称<input type="text" class="jcp-preset-name" maxlength="40" value="${escapeAttr(defaultPresetLabel(snapshot))}" placeholder="例如：闵行自然科学有余量"></label>
+            <button type="button" class="jcp-primary jcp-save-preset">保存当前筛选</button>
+          </div>
+        </section>
+        <section class="jcp-section">
+          <div class="jcp-section-title"><h5>我的条件</h5></div>
+          <div class="jcp-preset-list"></div>
+        </section>
+        <section class="jcp-section">
+          <div class="jcp-section-title">
+            <h5>通识学分建议</h5>
+            <button type="button" class="jcp-refresh-recommendations">重新检查</button>
+          </div>
+          <p class="jcp-muted">同源读取“学生修业情况查询”，仅在内存中比较通识类别的要求与已获学分，不保存学号、成绩或课程记录。</p>
+          <p class="jcp-muted jcp-recommendation-status">正在检查修业要求…</p>
+          <div class="jcp-recommendation-list"></div>
+        </section>
+      </div>
+      <div class="jcp-panel-footer">
+        <span class="jcp-muted">条件仅保存在用户脚本本地存储中</span>
+        <div class="jcp-actions"><button type="button" class="jcp-preset-close">关闭</button></div>
+      </div>`;
+    document.body.appendChild(mask);
+    document.body.appendChild(panel);
+    mask.addEventListener("click", closeSettingsPanel);
+    const closeButtons = panel.querySelectorAll(".jcp-preset-close");
+    for (let i = 0; i < closeButtons.length; i += 1) closeButtons[i].addEventListener("click", closeSettingsPanel);
+    panel.querySelector(".jcp-save-preset").addEventListener("click", () => saveCurrentPreset(panel));
+    panel.querySelector(".jcp-refresh-recommendations").addEventListener("click", () => loadGeneralEducationRecommendations(panel));
+    panel.addEventListener("click", (event) => handlePresetPanelClick(event, panel));
+    renderPresetList(panel);
+    loadGeneralEducationRecommendations(panel);
+  }
+
+  function handlePresetPanelClick(event, panel) {
+    const target = event.target;
+    if (!target || !target.classList) return;
+    if (target.classList.contains("jcp-apply-preset")) {
+      const preset = presetById(target.dataset.presetId);
+      if (!preset) return;
+      target.disabled = true;
+      applyPreset(preset).finally(() => {
+        target.disabled = false;
+      });
+    } else if (target.classList.contains("jcp-delete-preset")) {
+      deletePreset(target.dataset.presetId);
+      renderPresetList(panel);
+    } else if (target.classList.contains("jcp-create-recommendation")) {
+      const index = Number(target.dataset.recommendationIndex);
+      const recommendation = panel._jcpRecommendations && panel._jcpRecommendations[index];
+      if (!recommendation) return;
+      if (hasEquivalentPreset(recommendation)) {
+        target.disabled = true;
+        target.textContent = "已创建";
+        return;
+      }
+      state.settings.presets.push(recommendation);
+      saveSettings();
+      syncPresetQuickSelect();
+      target.disabled = true;
+      target.textContent = "已创建";
+      renderPresetList(panel);
+      showNotice(`已创建筛选条件“${recommendation.label}”`);
+    }
+  }
+
+  function captureCurrentPreset(label) {
+    const activeTab = currentCourseTypeTab();
+    const filters = [];
+    const selected = document.querySelectorAll("#searchBox .selecteds .selected[index]");
+    for (let i = 0; i < selected.length; i += 1) {
+      const index = selected[i].getAttribute("index") || "";
+      const source = findFilterSource(index, "");
+      const descriptor = source ? filterDescriptorFromNode(source) : selectedFilterDescriptor(selected[i]);
+      if (descriptor) filters.push(descriptor);
+    }
+    const inputs = [];
+    const inputNodes = document.querySelectorAll("#searchBox .items[name] input.fixed");
+    for (let i = 0; i < inputNodes.length; i += 1) {
+      const value = normalizeText(inputNodes[i].value);
+      const items = inputNodes[i].closest(".items[name]");
+      if (value && items) inputs.push({ group: items.getAttribute("name") || "", value });
+    }
+    const search = document.querySelector("#searchBox input[name='searchInput']");
+    return {
+      id: `preset-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      label: normalizeText(label).slice(0, 40),
+      tabCode: activeTab ? courseTypeCode(activeTab) : "",
+      tabLabel: activeTab ? normalizeText(activeTab.textContent) : "",
+      search: search ? normalizeText(search.value).slice(0, 120) : "",
+      filters,
+      inputs,
+    };
+  }
+
+  function currentCourseTypeTab() {
+    const tabs = document.querySelectorAll("[id^='tab_kklx_']");
+    for (let i = 0; i < tabs.length; i += 1) {
+      if ((tabs[i].parentElement && tabs[i].parentElement.classList.contains("active")) || tabs[i].classList.contains("active") || tabs[i].getAttribute("aria-selected") === "true") {
+        return tabs[i];
+      }
+    }
+    return null;
+  }
+
+  function courseTypeCode(tab) {
+    const match = String(tab && tab.id || "").match(/^tab_kklx_([^_]+)/);
+    return match ? match[1] : "";
+  }
+
+  function defaultPresetLabel(preset) {
+    const parts = [];
+    if (preset.tabLabel) parts.push(preset.tabLabel.replace(/课程$/, ""));
+    for (let i = 0; i < preset.filters.length && parts.length < 4; i += 1) {
+      const label = preset.filters[i].label;
+      parts.push(label.indexOf(":") >= 0 ? label.slice(label.indexOf(":") + 1) : label);
+    }
+    if (preset.search) parts.push(preset.search);
+    return parts.length ? parts.join(" · ") : "我的筛选条件";
+  }
+
+  function selectedFilterDescriptor(node) {
+    const index = node && node.getAttribute ? node.getAttribute("index") || "" : "";
+    const link = node && node.querySelector ? node.querySelector("a") : null;
+    const label = normalizeText(link ? link.textContent : node ? node.textContent : "");
+    const separator = index.lastIndexOf("_");
+    const group = separator > 0 ? index.slice(0, separator) : index;
+    return index && group ? { index, group, value: separator > 0 ? index.slice(separator + 1) : "", label } : null;
+  }
+
+  function filterDescriptorFromNode(node) {
+    if (!node || !node.getAttribute) return null;
+    const items = node.closest(".items[name]");
+    const group = items ? items.getAttribute("name") || "" : "";
+    const index = node.getAttribute("index") || "";
+    const link = node.querySelector("a");
+    if (!group || !index || !link) return null;
+    const row = node.closest(".condition-row");
+    const titleNode = row ? row.querySelector(".title") : null;
+    const title = normalizeText(titleNode ? titleNode.textContent : "").replace(/[：:]$/, "");
+    const text = normalizeText(link.textContent);
+    const key = link.getAttribute("key") || (index.indexOf(`${group}_`) === 0 ? index.slice(group.length + 1) : "");
+    return { index, group, value: key, label: title ? `${title}:${text}` : text };
+  }
+
+  function findFilterSource(index, group) {
+    const nodes = document.querySelectorAll("#searchBox [index]");
+    for (let i = 0; i < nodes.length; i += 1) {
+      if (nodes[i].getAttribute("index") !== index) continue;
+      const items = nodes[i].closest(".items[name]");
+      if (!items) continue;
+      if (!group || items.getAttribute("name") === group) return nodes[i];
+    }
+    return null;
+  }
+
+  function saveCurrentPreset(panel) {
+    const nameInput = panel.querySelector(".jcp-preset-name");
+    const preset = captureCurrentPreset(nameInput ? nameInput.value : "");
+    if (!preset.label) {
+      showNotice("请先填写筛选条件名称", "error");
+      if (nameInput) nameInput.focus();
+      return;
+    }
+    state.settings.presets.push(preset);
+    saveSettings();
+    syncPresetQuickSelect();
+    renderPresetList(panel);
+    showNotice(`已保存筛选条件“${preset.label}”`);
+  }
+
+  function presetById(id) {
+    const presets = state.settings.presets || [];
+    for (let i = 0; i < presets.length; i += 1) {
+      if (presets[i].id === id) return presets[i];
+    }
+    return null;
+  }
+
+  function deletePreset(id) {
+    const presets = state.settings.presets || [];
+    const next = [];
+    for (let i = 0; i < presets.length; i += 1) {
+      if (presets[i].id !== id) next.push(presets[i]);
+    }
+    state.settings.presets = next;
+    saveSettings();
+    syncPresetQuickSelect();
+  }
+
+  function renderPresetList(panel) {
+    const list = panel.querySelector(".jcp-preset-list");
+    if (!list) return;
+    const presets = state.settings.presets || [];
+    if (!presets.length) {
+      list.innerHTML = '<div class="jcp-preset-empty">还没有保存的筛选条件</div>';
+      return;
+    }
+    const html = [];
+    for (let i = 0; i < presets.length; i += 1) {
+      html.push(`
+        <div class="jcp-preset-card">
+          <div class="jcp-preset-main">
+            <strong>${escapeHtml(presets[i].label)}</strong>
+            <div class="jcp-preset-summary">${escapeHtml(presetSummaryText(presets[i]))}</div>
+          </div>
+          <div class="jcp-preset-actions">
+            <button type="button" class="jcp-primary jcp-apply-preset" data-preset-id="${escapeAttr(presets[i].id)}">应用</button>
+            <button type="button" class="jcp-delete-preset" data-preset-id="${escapeAttr(presets[i].id)}">删除</button>
+          </div>
+        </div>`);
+    }
+    list.innerHTML = html.join("");
+  }
+
+  function presetSummaryText(preset) {
+    const parts = [];
+    if (preset.tabLabel) parts.push(`类型:${preset.tabLabel}`);
+    for (let i = 0; i < preset.filters.length; i += 1) parts.push(preset.filters[i].label);
+    for (let i = 0; i < preset.inputs.length; i += 1) parts.push(`${preset.inputs[i].group}:${preset.inputs[i].value}`);
+    if (preset.search) parts.push(`关键字:${preset.search}`);
+    return parts.join(" · ") || "无额外条件";
+  }
+
+  function presetFingerprint(preset) {
+    const parts = [preset.tabCode || "", preset.tabLabel || "", preset.search || ""];
+    const filters = preset.filters || [];
+    for (let i = 0; i < filters.length; i += 1) parts.push(`${filters[i].group}:${filters[i].index}:${filters[i].value}`);
+    const inputs = preset.inputs || [];
+    for (let i = 0; i < inputs.length; i += 1) parts.push(`${inputs[i].group}:${inputs[i].value}`);
+    return parts.join("|");
+  }
+
+  function hasEquivalentPreset(candidate) {
+    const fingerprint = presetFingerprint(candidate);
+    const presets = state.settings.presets || [];
+    for (let i = 0; i < presets.length; i += 1) {
+      if (presetFingerprint(presets[i]) === fingerprint) return true;
+    }
+    return false;
+  }
+
+  async function applyPreset(preset) {
+    try {
+      const tab = findCourseTypeTab(preset);
+      if (preset.tabLabel && !tab) throw new Error(`找不到课程类型“${preset.tabLabel}”`);
+      const activeTab = currentCourseTypeTab();
+      if (tab && tab !== activeTab) {
+        clickElement(tab);
+        await waitForCondition(() => currentCourseTypeTab() && normalizeText(currentCourseTypeTab().textContent) === preset.tabLabel, 5000);
+      }
+      const reset = document.querySelector("#searchBox button[name='reset']");
+      if (reset) {
+        clickElement(reset);
+        await waitForCondition(() => !document.querySelector("#searchBox .selecteds .selected[index]"), 2500);
+      }
+      let missing = 0;
+      for (let i = 0; i < preset.filters.length; i += 1) {
+        const source = findFilterSource(preset.filters[i].index, preset.filters[i].group);
+        const link = source ? source.querySelector("a") : null;
+        if (link) clickElement(link);
+        else missing += 1;
+      }
+      for (let i = 0; i < preset.inputs.length; i += 1) {
+        const items = findFilterItems(preset.inputs[i].group);
+        const input = items ? items.querySelector("input.fixed") : null;
+        const sure = items ? items.querySelector("button.sure") : null;
+        if (input) {
+          input.value = preset.inputs[i].value;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          if (sure) clickElement(sure);
+        } else {
+          missing += 1;
+        }
+      }
+      const search = document.querySelector("#searchBox input[name='searchInput']");
+      if (search) {
+        search.value = preset.search || "";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        search.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      const query = document.querySelector("#searchBox button[name='query']");
+      if (!query) throw new Error("未找到选课页面查询按钮");
+      clickElement(query);
+      closeSettingsPanel();
+      showNotice(missing ? `已应用“${preset.label}”，${missing} 个已失效条件被跳过` : `已应用筛选条件“${preset.label}”`, missing ? "error" : "");
+    } catch (error) {
+      reportError("应用筛选条件失败", error);
+    }
+  }
+
+  function findCourseTypeTab(preset) {
+    const tabs = document.querySelectorAll("[id^='tab_kklx_']");
+    let codeFallback = null;
+    for (let i = 0; i < tabs.length; i += 1) {
+      const label = normalizeText(tabs[i].textContent);
+      const code = courseTypeCode(tabs[i]);
+      if (preset.tabLabel && label === preset.tabLabel) return tabs[i];
+      if (!codeFallback && preset.tabCode && code === preset.tabCode) codeFallback = tabs[i];
+    }
+    return codeFallback;
+  }
+
+  function findFilterItems(group) {
+    const items = document.querySelectorAll("#searchBox .items[name]");
+    for (let i = 0; i < items.length; i += 1) {
+      if (items[i].getAttribute("name") === group) return items[i];
+    }
+    return null;
+  }
+
+  function waitForCondition(predicate, timeoutMs) {
+    const started = Date.now();
+    return new Promise((resolve) => {
+      const check = () => {
+        let matched = false;
+        try {
+          matched = Boolean(predicate());
+        } catch (_) {
+          matched = false;
+        }
+        if (matched || Date.now() - started >= timeoutMs) {
+          resolve(matched);
+        } else {
+          window.setTimeout(check, 80);
+        }
+      };
+      check();
+    });
+  }
+
+  async function loadGeneralEducationRecommendations(panel) {
+    const status = panel.querySelector(".jcp-recommendation-status");
+    const list = panel.querySelector(".jcp-recommendation-list");
+    if (!status || !list) return;
+    status.textContent = "正在检查修业要求…";
+    list.innerHTML = "";
+    const refresh = panel.querySelector(".jcp-refresh-recommendations");
+    if (refresh) refresh.disabled = true;
+    try {
+      const gaps = await fetchGeneralEducationGaps();
+      const recommendations = [];
+      for (let i = 0; i < gaps.length; i += 1) {
+        const recommendation = buildGeneralEducationRecommendation(gaps[i], i);
+        if (recommendation) recommendations.push(recommendation);
+      }
+      panel._jcpRecommendations = recommendations;
+      if (!gaps.length) {
+        status.textContent = "通识核心类别的最低学分要求均已满足。";
+        list.innerHTML = '<div class="jcp-preset-empty">暂无需要补足的通识类别</div>';
+      } else if (!recommendations.length) {
+        status.textContent = "检测到未满足类别，但当前选课页没有对应筛选项。";
+      } else {
+        status.textContent = `检测到 ${recommendations.length} 个未满足的通识类别，可创建对应筛选条件。`;
+        list.innerHTML = recommendationCardsHtml(recommendations);
+      }
+    } catch (error) {
+      panel._jcpRecommendations = [];
+      status.textContent = `暂时无法读取修业要求：${friendlyErrorText(error)}`;
+      list.innerHTML = '<div class="jcp-preset-empty">你仍可保存和使用手动筛选条件</div>';
+      console.warn("[交大选课助手+] 修业要求读取失败", error);
+    } finally {
+      if (refresh) refresh.disabled = false;
+    }
+  }
+
+  async function fetchGeneralEducationGaps() {
+    const pageResponse = await fetch(ACADEMIC_PROGRESS_PAGE, { credentials: "same-origin" });
+    if (!pageResponse.ok) throw new Error(`修业情况页面请求失败 ${pageResponse.status}`);
+    const pageText = await pageResponse.text();
+    const page = new DOMParser().parseFromString(pageText, "text/html");
+    const studentIdNode = page.querySelector("#xh_id");
+    const studentId = studentIdNode ? String(studentIdNode.value || "").trim() : "";
+    if (!studentId) throw new Error("未获取到当前学生的修业查询上下文");
+    const queryBody = new URLSearchParams();
+    queryBody.set("queryModel.currentPage", "1");
+    queryBody.set("queryModel.showCount", "-1");
+    queryBody.set("queryModel.sortName", " ");
+    queryBody.set("queryModel.sortOrder", "asc");
+    const response = await fetch(`${ACADEMIC_PROGRESS_API}${encodeURIComponent(studentId)}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: queryBody.toString(),
+    });
+    if (!response.ok) throw new Error(`修业要求请求失败 ${response.status}`);
+    const data = await response.json();
+    const rows = Array.isArray(data)
+      ? data
+      : Array.isArray(data.items)
+        ? data.items
+        : Array.isArray(data.rows)
+          ? data.rows
+          : [];
+    const gaps = [];
+    let activeSection = "";
+    let recognizedCategories = 0;
+    for (let i = 0; i < rows.length; i += 1) {
+      const section = stripHtmlText(rows[i].level3 || "").replace(/\([^)]*\)\s*$/, "");
+      if (section) activeSection = section;
+      if (activeSection !== GENERAL_EDUCATION_SECTION) continue;
+      const category = stripHtmlText(rows[i].level4 || "").replace(/\([^)]*\)\s*$/, "");
+      if (!category) continue;
+      recognizedCategories += 1;
+      const required = Number(rows[i].yqzdxf || 0);
+      const earned = Number(rows[i].hdxf || 0);
+      const exempt = Number(rows[i].hmxf || 0);
+      if (!Number.isFinite(required) || required <= earned + exempt) continue;
+      gaps.push({ category, required, earned, exempt, missing: Math.max(0, required - earned - exempt) });
+    }
+    if (!recognizedCategories) throw new Error("未识别到通识核心类别数据");
+    return gaps;
+  }
+
+  function stripHtmlText(value) {
+    const container = document.createElement("div");
+    container.innerHTML = String(value || "");
+    return normalizeText(container.textContent || "");
+  }
+
+  function buildGeneralEducationRecommendation(gap, index) {
+    const filters = [];
+    const campus = defaultCampusFilter();
+    if (campus) filters.push(campus);
+    const nature = findFilterDescriptors("kcxzdm_list", (text) => text === "通识核心课程");
+    if (nature.length) filters.push(nature[0]);
+    let categories = findFilterDescriptors("kcgs_list", (text) => text === gap.category);
+    if (!categories.length && gap.category === "艺术修养") {
+      categories = findFilterDescriptors("kcgs_list", (text) => text.indexOf("/艺术修养") >= 0);
+    }
+    if (!categories.length && gap.category === "自然科学") {
+      categories = findFilterDescriptors("kcgs_list", (text) => text.indexOf("/自然科学") >= 0);
+    }
+    if (!categories.length) return null;
+    for (let i = 0; i < categories.length; i += 1) filters.push(categories[i]);
+    const balance = findFilterDescriptors("yl_list", (text) => text === "有");
+    if (balance.length) filters.push(balance[0]);
+    const campusName = campus && campus.label.indexOf(":") >= 0 ? campus.label.slice(campus.label.indexOf(":") + 1) : "";
+    return {
+      id: `recommended-${Date.now()}-${index}`,
+      label: compactValues([campusName, "通识", gap.category, "有余量"]).join(" · "),
+      tabCode: "10",
+      tabLabel: "通识课",
+      search: "",
+      filters,
+      inputs: [],
+      gap,
+    };
+  }
+
+  function defaultCampusFilter() {
+    const campusNode = document.querySelector("#xqh_id");
+    const campusCode = campusNode ? String(campusNode.value || "").trim() : "";
+    if (!campusCode) return null;
+    const descriptors = findFilterDescriptors("xq_list", (_, node) => node.getAttribute("index") === `xq_list_${campusCode}`);
+    return descriptors.length ? descriptors[0] : null;
+  }
+
+  function findFilterDescriptors(group, predicate) {
+    const out = [];
+    const items = findFilterItems(group);
+    if (!items) return out;
+    const nodes = items.querySelectorAll("li[index]");
+    for (let i = 0; i < nodes.length; i += 1) {
+      const link = nodes[i].querySelector("a");
+      const text = normalizeText(link ? link.textContent : nodes[i].textContent);
+      if (!predicate(text, nodes[i])) continue;
+      const descriptor = filterDescriptorFromNode(nodes[i]);
+      if (descriptor) out.push(descriptor);
+    }
+    return out;
+  }
+
+  function recommendationCardsHtml(recommendations) {
+    const html = [];
+    for (let i = 0; i < recommendations.length; i += 1) {
+      const gap = recommendations[i].gap;
+      const created = hasEquivalentPreset(recommendations[i]);
+      html.push(`
+        <div class="jcp-recommendation-card">
+          <div class="jcp-preset-main">
+            <strong>${escapeHtml(gap.category)}<span class="jcp-credit-gap">还差 ${escapeHtml(formatCredits(gap.missing))} 学分</span></strong>
+            <div class="jcp-preset-summary">${escapeHtml(presetSummaryText(recommendations[i]))}</div>
+          </div>
+          <div class="jcp-preset-actions">
+            <button type="button" class="jcp-primary jcp-create-recommendation" data-recommendation-index="${i}" ${created ? "disabled" : ""}>${created ? "已创建" : "创建条件"}</button>
+          </div>
+        </div>`);
+    }
+    return html.join("");
+  }
+
+  function formatCredits(value) {
+    const number = Number(value || 0);
+    return Number.isInteger(number) ? String(number) : number.toFixed(1);
   }
 
   function setStatus(text) {
@@ -780,7 +1527,7 @@
             <input type="checkbox" class="jcp-hide-conflicts" ${state.settings.hideConflicts ? "checked" : ""}>
             隐藏与已选课冲突的教学班/课程
           </label>
-          <p class="jcp-muted">脚本仅在你点击社区或总结按钮时发起网络请求，不会在扫描课程时自动调用外部服务。</p>
+          <p class="jcp-muted">打开“筛选条件”时会同源查询通识学分缺口；外部服务仅在你点击社区或总结按钮时调用。</p>
         </section>
       </div>
       <div class="jcp-panel-footer">

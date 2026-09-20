@@ -66,7 +66,7 @@ test("course assistant uses direct model entry without model-list requests", () 
 });
 
 test("course assistant allows multiple native course panels to stay expanded", () => {
-  assert.match(script, /@version\s+0\.9\.1/);
+  assert.match(script, /@version\s+0\.10\.0-rc\.1/);
   assert.match(script, /function preserveOtherExpandedCourses\(/);
   assert.match(script, /if \(panels\[i\] === clickedPanel\) continue/);
   assert.match(script, /expanded\[i\]\.body\.style\.display = "block"/);
@@ -74,11 +74,51 @@ test("course assistant allows multiple native course panels to stay expanded", (
   assert.doesNotMatch(script, /展开全部|收起全部/);
 });
 
+test("course assistant saves and applies reusable native filter conditions", () => {
+  assert.match(script, /function captureCurrentPreset\(/);
+  assert.match(script, /function applyPreset\(/);
+  assert.match(script, /button\[name='reset'\]/);
+  assert.match(script, /button\[name='query'\]/);
+  assert.match(script, /state\.settings\.presets/);
+  assert.match(script, />筛选条件<\/button>/);
+});
+
+test("course assistant exposes saved conditions between the native search actions", () => {
+  assert.match(script, /function ensurePresetQuickSelect\(/);
+  assert.match(script, /className = "jcp-preset-quick-select"/);
+  assert.match(script, /query\.insertAdjacentElement\("afterend", wrapper\)/);
+  assert.match(script, /placeholder\.textContent = presets\.length \? "筛选条件" : "暂无筛选条件"/);
+  assert.match(script, /select\.addEventListener\("change", async \(\) =>/);
+  assert.match(script, /await applyPreset\(preset\)/);
+  assert.match(script, /syncPresetQuickSelect\(\)/);
+  assert.match(script, /new ResizeObserver\(sync\)/);
+  assert.match(script, /select\.style\.height = `\$\{height\}px`/);
+  assert.match(script, /function ensureResetAutoQuery\(/);
+  assert.match(script, /if \(!event\.isTrusted\) return/);
+});
+
+test("course assistant recommends filter conditions from same-origin general education gaps", () => {
+  assert.match(script, /ACADEMIC_PROGRESS_API/);
+  assert.match(script, /credentials: "same-origin"/);
+  assert.match(script, /method: "POST"/);
+  assert.match(script, /Array\.isArray\(data\.items\)/);
+  assert.match(script, /GENERAL_EDUCATION_SECTION = "通识核心类模块"/);
+  assert.match(script, /if \(section\) activeSection = section/);
+  assert.match(script, /if \(!recognizedCategories\) throw new Error\("未识别到通识核心类别数据"\)/);
+  assert.match(script, /function buildGeneralEducationRecommendation\(/);
+  assert.match(script, /required <= earned \+ exempt/);
+  assert.match(script, /jcp-create-recommendation/);
+  assert.match(fixture, /JSON\.stringify\(\{ items: \[/);
+  assert.match(fixture, /String\(options\.method \|\| "GET"\)\.toUpperCase\(\) !== "POST"/);
+});
+
 test("offline course fixture is sanitized and blocks network requests", () => {
   assert.match(fixture, /离线脱敏测试页/);
   assert.match(fixture, /TEST2001/);
   assert.match(fixture, /GM_xmlhttpRequest/);
   assert.match(fixture, /options\.onerror/);
+  assert.match(fixture, /fixture-student/);
+  assert.match(fixture, /通识核心类模块/);
   assert.match(fixture, /\.\.\/\.\.\/scripts\/sjtu-course-assistant-plus\/sjtu-course-assistant-plus\.user\.js/);
   assert.doesNotMatch(fixture, /i\.sjtu\.edu\.cn/);
 });

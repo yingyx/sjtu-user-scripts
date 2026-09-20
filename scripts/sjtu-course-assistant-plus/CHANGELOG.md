@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added reusable filter conditions with local management and a native-style quick selector that applies, resets, and queries in one step.
+- Added general-education credit-gap checks and recommended conditions, with reliable handling of the school's grouped academic-progress data.
+- Extended the sanitized offline fixture and tests for filter conditions and academic-progress recommendations.
+
 ## 0.9.1
 
 - Changed the native course accordion so opening another course no longer closes panels that are already open, without adding a separate expand-all control.
