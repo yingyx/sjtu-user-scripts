@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Start at `document-start` and install the privacy styles synchronously to prevent the signed-in identity from flashing during page startup.
+- Restrict masking to the current-account header control and the signed-in user's own profile header; post authors, topic participants, mentions, and user cards remain visible.
+- Cache only the last confirmed signed-in username locally so direct navigation to the user's own profile can be masked before Discourse finishes rendering.
+- Keep observer-driven toggle updates idempotent and ignore mutations originating inside the toggle, preventing a feedback loop that could leave Shuiyuan stuck on its loading screen.
+
 ## 0.1.1
 
 - Added neutral `UNLICENSED` metadata and the repository support URL.

@@ -10,7 +10,7 @@ English | [简体中文](README.zh-CN.md)
 | Script | Entry file | Purpose |
 | --- | --- | --- |
 | [Shuiyuan Deep Search](scripts/shuiyuan-deep-search/README.md) | `scripts/shuiyuan-deep-search/shuiyuan-deep-search.user.js` | Decompose questions, search and read Shuiyuan topics in parallel, produce cited research reports, and support follow-up questions. |
-| [Shuiyuan Privacy Mask](scripts/shuiyuan-privacy-mask/README.md) | `scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js` | Hide your own avatar, username, display name, and profile identity on Shuiyuan, with a native-looking sidebar toggle. |
+| [Shuiyuan Privacy Mask](scripts/shuiyuan-privacy-mask/README.md) | `scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js` | Mask the signed-in account identity in Shuiyuan's private account surfaces. |
 | [SJTU Course Assistant Plus](scripts/sjtu-course-assistant-plus/README.md) | `scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js` | Enhance SJTU course selection with conflict filtering, jCourse reviews, and manageable LLM summary providers. |
 <!-- END GENERATED SCRIPT LIST -->
 

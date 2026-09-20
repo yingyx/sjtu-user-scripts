@@ -10,7 +10,7 @@
 | 脚本 | 入口文件 | 用途 |
 | --- | --- | --- |
 | [水源深度搜索助手](scripts/shuiyuan-deep-search/README.md) | `scripts/shuiyuan-deep-search/shuiyuan-deep-search.user.js` | 自动拆解问题、并行检索并精读水源帖子，生成带来源链接的研究报告并支持继续追问。 |
-| [水源隐私遮罩](scripts/shuiyuan-privacy-mask/README.md) | `scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js` | 隐藏你在水源中的头像、用户名、显示名称和个人资料身份，并提供符合原生界面的侧边栏开关。 |
+| [水源隐私遮罩](scripts/shuiyuan-privacy-mask/README.md) | `scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js` | 仅隐藏水源当前账户入口及本人主页头部中的身份信息，并保留帖子作者等公开语境。 |
 | [交大选课助手+](scripts/sjtu-course-assistant-plus/README.md) | `scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js` | 增强交大选课页面，支持冲突筛选、选课社区评价和可管理的 LLM 总结来源。 |
 <!-- END GENERATED SCRIPT LIST -->
 

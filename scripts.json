@@ -18,7 +18,7 @@
     "catalog": {
       "zh-CN": {
         "name": "水源隐私遮罩",
-        "description": "隐藏你在水源中的头像、用户名、显示名称和个人资料身份，并提供符合原生界面的侧边栏开关。"
+        "description": "仅隐藏水源当前账户入口及本人主页头部中的身份信息，并保留帖子作者等公开语境。"
       }
     },
     "entry": "scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js",
