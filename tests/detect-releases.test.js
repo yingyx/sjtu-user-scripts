@@ -33,6 +33,10 @@ function fakeGit(releasedSources) {
   };
 }
 
+function metadataVersion(source) {
+  return source.match(/^\s*\/\/\s+@version\s+(\S+)/m)?.[1] || "";
+}
+
 test("automatic release arguments require explicit values", () => {
   assert.deepEqual(parseArguments([
     "--remote", "upstream",
@@ -76,10 +80,14 @@ test("detector creates an independent matrix only for advanced scripts", () => {
     commitSha: "a".repeat(40),
     git: fakeGit(released),
   });
-  assert.deepEqual(result.candidates, [{ script_id: "shuiyuan-privacy-mask", version: "0.2.0" }]);
+  const expected = [
+    { script_id: "shuiyuan-privacy-mask", version: metadataVersion(sources.get("shuiyuan-privacy-mask")) },
+    { script_id: "sjtu-course-assistant-plus", version: metadataVersion(sources.get("sjtu-course-assistant-plus")) },
+  ].filter((candidate) => candidate.version && !candidate.version.includes("-"));
+  assert.deepEqual(result.candidates, expected);
   assert.deepEqual(result.matrix, { include: result.candidates });
   assert.equal(result.hasReleases, true);
-  assert.match(formatSummary(result), /1 release candidate\(s\) require approval/);
+  assert.match(formatSummary(result), new RegExp(`${expected.length} release candidate\\(s\\) require approval`));
 });
 
 test("detector refuses same-version publication drift and unsafe history", () => {

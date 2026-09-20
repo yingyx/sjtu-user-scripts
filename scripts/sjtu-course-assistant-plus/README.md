@@ -35,10 +35,9 @@ After the page loads, a toolbar named `SJTU Course Assistant Plus` appears near 
 
 Use the toolbar to:
 
-- `Hide conflicting courses`: hide teaching classes or course panels that conflict with courses you have already selected.
 - `Filter conditions`: save the current filters, apply or delete saved conditions, and review suggestions for unmet general-education categories.
 - `Rescan`: scan the current course list again after searching, expanding panels, or changing selected courses.
-- `Settings`: manage LLM providers, API keys, models, summary dimensions, and conflict hiding.
+- `Settings`: manage course-list behavior, review data, LLM providers, summary dimensions, and local caches.
 
 The script scans the selected-course schedule and compares it with the teaching classes currently shown on the page. Conflict labels are shown directly in the course list.
 
@@ -81,15 +80,21 @@ Single-class and multi-class courses use the same summary-card layout, with each
 
 ## Settings
 
+Settings are grouped into separated sections for course-list behavior, review data, LLM providers, summary dimensions, and local data.
+
+### Course List
+
+You can hide teaching classes that conflict with selected courses and enable or disable automatic activation of the native load-more link. Both options are stored locally and apply after saving.
+
+### Review Data
+
+The optional jCourse API key is used as a Bearer token. You can also choose how many of the newest reviews are sent to the active LLM for each summary, from 3 to 20; the default is 12.
+
 ### LLM Providers
 
 DeepSeek is built in and cannot be removed. You can add, edit, remove, and switch custom providers. Custom providers must implement the OpenAI Chat Completions API. Endpoints must use HTTPS, except local services on `localhost` or `127.0.0.1`, which may use HTTP.
 
 Each provider stores a display name, Chat Completions endpoint, API key, and model ID. The endpoint and model fields are displayed side by side. The built-in DeepSeek model defaults to `deepseek-v4-flash`; model IDs are entered directly and the script never fetches model lists.
-
-### jCourse API Key
-
-Optional. If provided, the script sends it as a Bearer token when requesting jCourse API data.
 
 ### Summary Dimensions
 
@@ -106,9 +111,7 @@ Examples:
 - Workload
 - Grading style
 
-### Hide Conflicts
-
-When enabled, classes or course panels that conflict with your selected courses are hidden.
+The settings panel also provides a one-click reset to the default summary dimensions and a cache-clear action that preserves settings and saved filter conditions.
 
 ## Privacy And Network Requests
 
@@ -121,7 +124,7 @@ It may request:
 - `api.deepseek.com` when you generate a summary with built-in DeepSeek.
 - Any LLM endpoint you explicitly configure, when you generate a summary with it.
 
-Summary requests send the active provider up to 12 jCourse reviews plus course, teacher, rating, semester, and review-time context. Provider settings, API keys, saved filter conditions, and caches stay in userscript-manager local storage. Academic-progress responses are processed in memory; the script does not store names, student IDs, grades, or course records. Normal page scanning sends no course data to an LLM.
+Summary requests send the active provider the configured number of jCourse reviews (3–20, default 12) plus course, teacher, rating, semester, and review-time context. Provider settings, API keys, saved filter conditions, and caches stay in userscript-manager local storage. Academic-progress responses are processed in memory; the script does not store names, student IDs, grades, or course records. Normal page scanning sends no course data to an LLM.
 
 ## Troubleshooting
 

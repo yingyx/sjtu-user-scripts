@@ -2,7 +2,7 @@
 // @name         交大选课助手+
 // @name:en      SJTU Course Assistant Plus
 // @namespace    https://course.sjtu.plus/
-// @version      0.10.0-rc.3
+// @version      0.10.0
 // @description  增强交大选课页面，支持筛选条件、冲突筛选、选课社区评价和可管理的 LLM 总结来源。
 // @description:en  Enhance SJTU course selection with saved filter conditions, conflict filtering, jCourse reviews, and manageable LLM summary providers.
 // @author       Codex
@@ -109,12 +109,19 @@
     }
     return {
       hideConflicts: Boolean(saved.hideConflicts),
+      autoLoadMore: saved.autoLoadMore !== false,
+      summaryReviewLimit: normalizeReviewLimit(saved.summaryReviewLimit),
       activeProviderId,
       providers,
       jcourseApiKey: typeof saved.jcourseApiKey === "string" ? saved.jcourseApiKey : "",
       dimensions: normalizeDimensionSettings(saved.dimensions),
       presets: normalizePresetSettings(saved.presets),
     };
+  }
+
+  function normalizeReviewLimit(value) {
+    const number = Number.parseInt(value, 10);
+    return Number.isFinite(number) ? Math.min(20, Math.max(3, number)) : 12;
   }
 
   function normalizePresetSettings(value) {
@@ -622,7 +629,7 @@
       }
       .jcp-panel h4 { margin: 0 0 10px; font-size: 16px; }
       .jcp-panel label { display: block; margin: 9px 0 4px; font-weight: 600; }
-      .jcp-panel input[type="text"], .jcp-panel input[type="password"], .jcp-panel textarea {
+      .jcp-panel input[type="text"], .jcp-panel input[type="password"], .jcp-panel input[type="number"], .jcp-panel textarea {
         width: 100%;
         box-sizing: border-box;
         border: 1px solid #ccc;
@@ -700,7 +707,6 @@
         font-size: 11px;
       }
       .jcp-toolbar-spacer { flex: 1 1 auto; }
-      .jcp-toolbar-toggle { margin: 0; font-weight: 400; display: inline-flex; align-items: center; gap: 4px; }
       .jcp-status { color: #6a7c89; }
       .jcp-notice {
         position: fixed;
@@ -742,9 +748,35 @@
       }
       .jcp-panel-header h4 { margin: 0; color: #245269; }
       .jcp-panel-body { padding: 4px 16px 16px; }
-      .jcp-section { margin-top: 14px; padding-top: 2px; }
-      .jcp-section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .jcp-section { padding: 16px 0 2px; }
+      .jcp-section + .jcp-section { margin-top: 14px; border-top: 1px solid #dbe5ec; }
+      .jcp-section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
       .jcp-section-title h5 { margin: 0; font-size: 14px; color: #333; }
+      .jcp-section-actions { display: flex; align-items: center; gap: 6px; }
+      .jcp-setting-stack { display: grid; gap: 8px; margin-top: 10px; }
+      .jcp-setting-option {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin: 0 !important;
+        padding: 10px 11px;
+        border: 1px solid #d8e1e8;
+        border-radius: 6px;
+        background: #fbfcfd;
+        font-weight: 400 !important;
+        cursor: pointer;
+      }
+      .jcp-setting-copy { min-width: 0; }
+      .jcp-setting-copy strong { display: block; color: #334; font-size: 13px; }
+      .jcp-setting-copy small { display: block; margin-top: 2px; color: #71808a; font-size: 12px; font-weight: 400; line-height: 1.5; }
+      .jcp-setting-option input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
+      .jcp-field-grid { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 10px 12px; margin-top: 10px; }
+      .jcp-field-grid label { margin: 0; color: #667782; font-size: 12px; font-weight: 500; }
+      .jcp-field-grid input { margin-top: 4px; }
+      .jcp-field-help { grid-column: 1 / -1; margin: -2px 0 0; }
+      .jcp-cache-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 9px; }
+      .jcp-cache-row .jcp-muted { margin: 0; }
       .jcp-provider-list { display: grid; gap: 9px; margin-top: 8px; }
       .jcp-provider-card {
         border: 1px solid #d8e1e8;
@@ -825,6 +857,9 @@
         .panel-heading.kc_head { padding-right: 12px; }
         .jcp-heading-right { position: static; width: auto; justify-content: flex-start; margin-top: 6px; }
         .jcp-provider-grid { grid-template-columns: 1fr; }
+        .jcp-field-grid { grid-template-columns: 1fr; }
+        .jcp-field-help { grid-column: auto; }
+        .jcp-cache-row { align-items: flex-start; flex-direction: column; }
         .jcp-preset-create { grid-template-columns: 1fr; }
         .jcp-preset-card, .jcp-recommendation-card { align-items: flex-start; flex-direction: column; }
         .jcp-preset-actions { width: 100%; }
@@ -845,10 +880,6 @@
       <strong class="jcp-toolbar-brand"><span class="jcp-toolbar-mark">+</span>交大选课助手+</strong>
       <span class="jcp-muted jcp-status">准备扫描课程</span>
       <span class="jcp-toolbar-spacer"></span>
-      <label class="jcp-toolbar-toggle">
-        <input type="checkbox" class="jcp-hide-toggle">
-        隐藏冲突
-      </label>
       <button type="button" class="jcp-presets">筛选条件</button>
       <button type="button" class="jcp-primary jcp-rescan">重新扫描</button>
       <button type="button" class="jcp-settings">设置</button>
@@ -859,12 +890,6 @@
     } else {
       target.insertAdjacentElement(target.id === "contentBox" || target.classList.contains("tjxk_list") ? "beforebegin" : "afterend", toolbar);
     }
-    toolbar.querySelector(".jcp-hide-toggle").checked = state.settings.hideConflicts;
-    toolbar.querySelector(".jcp-hide-toggle").addEventListener("change", (event) => {
-      state.settings.hideConflicts = event.target.checked;
-      saveSettings();
-      scheduleScan();
-    });
     toolbar.querySelector(".jcp-presets").addEventListener("click", openPresetPanel);
     toolbar.querySelector(".jcp-rescan").addEventListener("click", () => scanNow());
     toolbar.querySelector(".jcp-settings").addEventListener("click", openSettingsPanel);
@@ -1552,6 +1577,37 @@
       </div>
       <div class="jcp-panel-body">
         <section class="jcp-section">
+          <div class="jcp-section-title"><h5>课程列表</h5></div>
+          <div class="jcp-setting-stack">
+            <label class="jcp-setting-option">
+              <span class="jcp-setting-copy">
+                <strong>隐藏冲突课程</strong>
+                <small>隐藏与已选课程时间冲突的教学班；冲突未知的课程仍会保留。</small>
+              </span>
+              <input type="checkbox" class="jcp-hide-conflicts" ${state.settings.hideConflicts ? "checked" : ""}>
+            </label>
+            <label class="jcp-setting-option">
+              <span class="jcp-setting-copy">
+                <strong>自动加载更多课程</strong>
+                <small>滚动到列表底部时自动触发学校原生的“点此查看更多”。</small>
+              </span>
+              <input type="checkbox" class="jcp-auto-load-more" ${state.settings.autoLoadMore ? "checked" : ""}>
+            </label>
+          </div>
+        </section>
+        <section class="jcp-section">
+          <div class="jcp-section-title"><h5>评价数据</h5></div>
+          <div class="jcp-field-grid">
+            <label>jCourse API Key（可选）
+              <input type="password" class="jcp-key-jcourse" placeholder="用于 Bearer 认证访问 jCourse API" value="${escapeAttr(state.settings.jcourseApiKey)}">
+            </label>
+            <label>总结使用的评价数
+              <input type="number" class="jcp-review-limit" min="3" max="20" step="1" value="${state.settings.summaryReviewLimit}">
+            </label>
+            <p class="jcp-muted jcp-field-help">评价只会在你点击“选课社区”或“总结评价”时请求；总结最多使用这里设置的最新评价数。</p>
+          </div>
+        </section>
+        <section class="jcp-section">
           <div class="jcp-section-title">
             <h5>LLM 来源</h5>
             <button type="button" class="jcp-add-provider">添加来源</button>
@@ -1560,12 +1616,13 @@
           <div class="jcp-provider-list">${providerCardsHtml(state.settings.providers, state.settings.activeProviderId)}</div>
         </section>
         <section class="jcp-section">
-          <h5>jCourse</h5>
-          <label>jCourse API Key（可选）</label>
-          <input type="password" class="jcp-key-jcourse" placeholder="用于 Bearer 认证访问 jCourse API" value="${escapeAttr(state.settings.jcourseApiKey)}">
-        </section>
-        <section class="jcp-section">
-          <div class="jcp-section-title"><h5>总结维度</h5><button type="button" class="jcp-add-dim">添加维度</button></div>
+          <div class="jcp-section-title">
+            <h5>总结维度</h5>
+            <div class="jcp-section-actions">
+              <button type="button" class="jcp-reset-dims">恢复默认</button>
+              <button type="button" class="jcp-add-dim">添加维度</button>
+            </div>
+          </div>
           <table class="jcp-dim-table">
             <thead>
               <tr><th class="jcp-dim-type-cell">类型</th><th>维度</th><th>备注</th><th class="jcp-dim-action-cell">操作</th></tr>
@@ -1575,15 +1632,15 @@
           <p class="jcp-muted">“是否”输出 是/否/未知；“开放”输出 20 字内短语。备注会作为额外要求发送给 LLM。</p>
         </section>
         <section class="jcp-section">
-          <label style="font-weight:400;">
-            <input type="checkbox" class="jcp-hide-conflicts" ${state.settings.hideConflicts ? "checked" : ""}>
-            隐藏与已选课冲突的教学班/课程
-          </label>
-          <p class="jcp-muted">打开“筛选条件”时会同源查询通识学分缺口；外部服务仅在你点击社区或总结按钮时调用。</p>
+          <div class="jcp-section-title"><h5>本地数据</h5></div>
+          <div class="jcp-cache-row">
+            <p class="jcp-muted">清除已缓存的课程匹配、评价和 AI 总结；不会删除筛选条件或本页设置。</p>
+            <button type="button" class="jcp-clear-cache">清除缓存</button>
+          </div>
         </section>
       </div>
       <div class="jcp-panel-footer">
-        <button type="button" class="jcp-clear-cache">清除缓存</button>
+        <span class="jcp-muted">设置保存在当前用户脚本管理器中</span>
         <div class="jcp-actions">
           <button type="button" class="jcp-cancel">取消</button>
           <button type="button" class="jcp-primary jcp-save">保存</button>
@@ -1597,6 +1654,10 @@
     for (let i = 0; i < cancelButtons.length; i += 1) cancelButtons[i].addEventListener("click", closeSettingsPanel);
     panel.querySelector(".jcp-add-provider").addEventListener("click", () => addProviderCard(panel));
     panel.querySelector(".jcp-add-dim").addEventListener("click", () => addDimensionRow(panel, { type: "yesno", label: "", note: "" }));
+    panel.querySelector(".jcp-reset-dims").addEventListener("click", () => {
+      panel.querySelector(".jcp-dim-table tbody").innerHTML = dimensionsToTableRowsHtml(cloneDefaultDimensions());
+      showNotice("已恢复默认总结维度，保存后生效");
+    });
     panel.addEventListener("click", (event) => {
       const target = event.target;
       if (!target || !target.classList) return;
@@ -1641,13 +1702,14 @@
       state.settings.providers = parsed.providers;
       state.settings.activeProviderId = parsed.activeProviderId;
       state.settings.jcourseApiKey = panel.querySelector(".jcp-key-jcourse").value.trim();
+      state.settings.summaryReviewLimit = normalizeReviewLimit(panel.querySelector(".jcp-review-limit").value);
       state.settings.dimensions = parseDimensionSettingsTable(panel);
       if (!state.settings.dimensions.length) state.settings.dimensions = cloneDefaultDimensions();
       state.settings.hideConflicts = panel.querySelector(".jcp-hide-conflicts").checked;
+      state.settings.autoLoadMore = panel.querySelector(".jcp-auto-load-more").checked;
       saveSettings();
-      const hideToggle = document.querySelector(".jcp-hide-toggle");
-      if (hideToggle) hideToggle.checked = state.settings.hideConflicts;
       closeSettingsPanel();
+      ensureAutoLoadMore();
       scheduleScan();
       showNotice("设置已保存");
     });
@@ -1833,6 +1895,11 @@
   }
 
   function ensureAutoLoadMore() {
+    if (!state.settings.autoLoadMore) {
+      if (state.loadMoreObserver) state.loadMoreObserver.disconnect();
+      state.loadMoreControl = null;
+      return;
+    }
     ensureAutoLoadMoreObserver();
     const control = findLoadMoreControl();
     if (control === state.loadMoreControl) return;
@@ -1843,7 +1910,7 @@
   }
 
   async function triggerAutoLoadMore(control) {
-    if (state.loadMorePending || control !== state.loadMoreControl || !isLoadMoreControlReady(control)) return;
+    if (!state.settings.autoLoadMore || state.loadMorePending || control !== state.loadMoreControl || !isLoadMoreControlReady(control)) return;
     state.loadMorePending = true;
     if (state.loadMoreObserver) state.loadMoreObserver.unobserve(control);
     const beforeCount = collectCandidatePanels().length;
@@ -2840,10 +2907,11 @@
   }
 
   async function fetchReviews(courseId) {
-    const cacheKey = stableKey(["topReviews-v2", courseId, state.settings.jcourseApiKey ? "key" : "session"]);
+    const pageSize = normalizeReviewLimit(state.settings.summaryReviewLimit);
+    const cacheKey = stableKey(["topReviews-v3", courseId, pageSize, state.settings.jcourseApiKey ? "key" : "session"]);
     const cached = getCache(state.jcourseCache, cacheKey);
     if (cached !== undefined) return cached;
-    const data = await requestJCourseJson(`${COURSE_API_BASE}/course/${encodeURIComponent(courseId)}/review?order_by=like_count&page=1&page_size=10`);
+    const data = await requestJCourseJson(`${COURSE_API_BASE}/course/${encodeURIComponent(courseId)}/review?order_by=like_count&page=1&page_size=${pageSize}`);
     const reviews = Array.isArray(data.items) ? data.items : [];
     setCache(state.jcourseCache, cacheKey, reviews);
     saveJson(JCACHE_KEY, state.jcourseCache);
@@ -2853,13 +2921,14 @@
   async function summarizeReviews(provider, sources, reviews) {
     const dimensions = state.settings.dimensions;
     const model = provider.model;
-    const cacheKey = stableKey(["summary", provider.id, provider.endpoint, sourcesFingerprint(sources), latestReviewFingerprint(reviews), dimensionsKey(dimensions), model]);
+    const reviewLimit = normalizeReviewLimit(state.settings.summaryReviewLimit);
+    const cacheKey = stableKey(["summary", provider.id, provider.endpoint, sourcesFingerprint(sources), latestReviewFingerprint(reviews), dimensionsKey(dimensions), model, reviewLimit]);
     const cached = getCache(state.llmCache, cacheKey);
     if (cached !== undefined) return cached;
 
     const reviewLines = [];
-    const reviewLimit = Math.min(12, reviews.length);
-    for (let index = 0; index < reviewLimit; index += 1) {
+    const usedReviewCount = Math.min(reviewLimit, reviews.length);
+    for (let index = 0; index < usedReviewCount; index += 1) {
       const review = reviews[index];
       const wrapped = review.review || review;
       const source = review.source || {};

@@ -66,12 +66,30 @@ test("course assistant uses direct model entry without model-list requests", () 
 });
 
 test("course assistant allows multiple native course panels to stay expanded", () => {
-  assert.match(script, /@version\s+0\.10\.0-rc\.3/);
+  assert.match(script, /@version\s+0\.10\.0(?!-)/);
   assert.match(script, /function preserveOtherExpandedCourses\(/);
   assert.match(script, /if \(panels\[i\] === clickedPanel\) continue/);
   assert.match(script, /expanded\[i\]\.body\.style\.display = "block"/);
   assert.doesNotMatch(script, /jcp-expand-all/);
   assert.doesNotMatch(script, /展开全部|收起全部/);
+});
+
+test("course assistant groups settings and keeps list behavior out of the toolbar", () => {
+  assert.doesNotMatch(script, /class="jcp-hide-toggle"/);
+  assert.match(script, /<h5>课程列表<\/h5>/);
+  assert.match(script, /<h5>评价数据<\/h5>/);
+  assert.match(script, /<h5>LLM 来源<\/h5>/);
+  assert.match(script, /<h5>总结维度<\/h5>/);
+  assert.match(script, /<h5>本地数据<\/h5>/);
+  assert.match(script, /\.jcp-section \+ \.jcp-section/);
+  assert.match(script, /class="jcp-auto-load-more"/);
+  assert.match(script, /class="jcp-review-limit"/);
+  assert.match(script, /class="jcp-reset-dims"/);
+  assert.match(script, /autoLoadMore: saved\.autoLoadMore !== false/);
+  assert.match(script, /summaryReviewLimit: normalizeReviewLimit/);
+  assert.match(script, /!state\.settings\.autoLoadMore/);
+  assert.match(script, /Math\.min\(reviewLimit, reviews\.length\)/);
+  assert.match(script, /page_size=\$\{pageSize\}/);
 });
 
 test("course assistant loads more courses when the native control reaches the viewport", () => {
