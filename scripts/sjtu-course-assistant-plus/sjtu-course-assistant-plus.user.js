@@ -2,7 +2,7 @@
 // @name         交大选课助手+
 // @name:en      SJTU Course Assistant Plus
 // @namespace    https://course.sjtu.plus/
-// @version      0.10.0-rc.1
+// @version      0.10.0-rc.2
 // @description  增强交大选课页面，支持筛选条件、冲突筛选、选课社区评价和可管理的 LLM 总结来源。
 // @description:en  Enhance SJTU course selection with saved filter conditions, conflict filtering, jCourse reviews, and manageable LLM summary providers.
 // @author       Codex
@@ -394,6 +394,50 @@
       .jcp-conflict-tag { border-color: #ebccd1; background: #fff0f0; color: #a94442; }
       .jcp-ok-tag { border-color: #d6e9c6; background: #f6fff0; color: #2b542c; }
       .jcp-selected-tag { border-color: #bce8f1; background: #eef9ff; color: #245269; }
+      .jcp-conflict-details {
+        position: relative;
+        overflow: visible;
+        font-family: inherit;
+        line-height: 1.4;
+        cursor: pointer;
+      }
+      .jcp-conflict-details::after {
+        content: "›";
+        display: inline-block;
+        margin-left: 4px;
+        font-size: 13px;
+        transform: rotate(90deg);
+      }
+      .jcp-conflict-popover {
+        display: none;
+        position: absolute;
+        z-index: 1060;
+        top: calc(100% + 6px);
+        right: 0;
+        width: max-content;
+        min-width: 220px;
+        max-width: min(360px, 80vw);
+        padding: 9px 11px;
+        border: 1px solid #e3b9b9;
+        border-radius: 4px;
+        background: #fff;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+        color: #555;
+        font-size: 12px;
+        font-weight: normal;
+        line-height: 1.5;
+        text-align: left;
+        white-space: normal;
+      }
+      .jcp-conflict-details:hover .jcp-conflict-popover,
+      .jcp-conflict-details:focus .jcp-conflict-popover,
+      .jcp-conflict-details.jcp-popover-open .jcp-conflict-popover { display: block; }
+      .jcp-conflict-popover-layer { position: relative; z-index: 30; }
+      .jcp-conflict-popover-layer .panel-body.table-responsive { overflow: visible; }
+      .jcp-conflict-details.jcp-popover-up .jcp-conflict-popover { top: auto; bottom: calc(100% + 6px); }
+      .jcp-conflict-popover strong { display: block; margin-bottom: 4px; color: #a94442; }
+      .jcp-conflict-popover ul { margin: 0; padding-left: 18px; }
+      .jcp-conflict-popover li + li { margin-top: 4px; }
       .jcp-title-rating {
         margin-left: 8px;
         margin-right: 8px;
@@ -1820,11 +1864,21 @@
       selected.push({
         node: items[i],
         text,
+        label: selectedCourseLabel(items[i], text),
         normalizedText: normalizeText(text).toUpperCase(),
         slots: parseScheduleText(getMultilineText(items[i].querySelector("p.time, .time")) || text),
       });
     }
     return selected;
+  }
+
+  function selectedCourseLabel(node, fallback) {
+    const group = node && node.closest ? node.closest(".outer_xkxx_list") : null;
+    const heading = group ? group.querySelector("h1, h2, h3, h4, h5, h6, .panel-title") : null;
+    const source = normalizeText(heading ? heading.textContent : fallback);
+    const match = source.match(/\(([A-Za-z0-9._-]+)\)\s*(.*?)(?:\s+-\s+\d+(?:\.\d+)?\s*学分|$)/);
+    if (match) return `${match[1]} ${match[2]}`.trim().slice(0, 80);
+    return source.split("\n")[0].slice(0, 80) || "未命名课程";
   }
 
   function hasConflict(slots, selectedSlots) {
@@ -1836,17 +1890,38 @@
     return false;
   }
 
+  function findConflictMatches(slots, selectedCourses) {
+    const matches = [];
+    for (let i = 0; i < selectedCourses.length; i += 1) {
+      const selected = selectedCourses[i];
+      if (hasConflict(slots, selected.slots || [])) matches.push(selected);
+    }
+    return matches;
+  }
+
+  function mergeConflictMatches(target, matches) {
+    for (let i = 0; i < matches.length; i += 1) {
+      let exists = false;
+      for (let j = 0; j < target.length; j += 1) {
+        if (target[j].node === matches[i].node) exists = true;
+      }
+      if (!exists) target.push(matches[i]);
+    }
+  }
+
   function applyConflictState(course) {
     let conflicts = 0;
     let pending = 0;
     let allRowsAreConflict = course.rows.length > 0;
     let anyRowConflict = false;
     let selectedRows = 0;
+    const courseConflictMatches = [];
 
     for (let i = 0; i < course.rows.length; i += 1) {
       const entry = course.rows[i];
       const rowSelected = isSelectedCourseRow(course, entry);
-      const rowConflict = !rowSelected && entry.slots.length > 0 && hasConflict(entry.slots, state.selectedSlots);
+      const rowConflictMatches = !rowSelected && entry.slots.length > 0 ? findConflictMatches(entry.slots, state.selectedCourses) : [];
+      const rowConflict = rowConflictMatches.length > 0;
       const rowPending = !entry.timeText || entry.slots.length === 0;
       entry.row.classList.toggle("jcp-row-selected", rowSelected);
       entry.row.classList.toggle("jcp-row-conflict", rowConflict);
@@ -1862,6 +1937,8 @@
       } else if (rowConflict) {
         conflicts += 1;
         anyRowConflict = true;
+        mergeConflictMatches(courseConflictMatches, rowConflictMatches);
+        addConflictStatus(entry.row.querySelector(".an") || entry.row.lastElementChild || entry.row, `冲突 ${rowConflictMatches.length} 门`, rowConflictMatches, "jcp-row-status");
       } else if (rowPending) {
         pending += 1;
       }
@@ -1870,7 +1947,7 @@
 
     course.panel.classList.toggle("jcp-course-conflict", anyRowConflict);
     course.panel.classList.toggle("jcp-hidden-conflict", allRowsAreConflict && selectedRows === 0 && state.settings.hideConflicts);
-    updateHeadingConflictStatus(course, conflicts, pending, selectedRows);
+    updateHeadingConflictStatus(course, conflicts, pending, selectedRows, courseConflictMatches);
 
     return { conflicts, pending, selected: selectedRows };
   }
@@ -1893,7 +1970,7 @@
     return false;
   }
 
-  function updateHeadingConflictStatus(course, conflicts, pending, selectedRows) {
+  function updateHeadingConflictStatus(course, conflicts, pending, selectedRows, conflictMatches) {
     const info = ensureHeadingRight(course);
     if (!info) return;
     removeOwned(info, ".jcp-heading-status");
@@ -1913,10 +1990,14 @@
       text = "冲突未知";
       className = "jcp-warning";
     }
-    const tag = document.createElement("span");
-    tag.className = `jcp-badge jcp-heading-status ${className}`;
-    tag.textContent = text;
-    info.appendChild(tag);
+    if (conflicts > 0 && conflictMatches && conflictMatches.length) {
+      addConflictStatus(info, `${text} · ${conflictMatches.length}门`, conflictMatches, "jcp-heading-status");
+    } else {
+      const tag = document.createElement("span");
+      tag.className = `jcp-badge jcp-heading-status ${className}`;
+      tag.textContent = text;
+      info.appendChild(tag);
+    }
     normalizeHeadingRatingPosition(course);
     updateTeacherBadge(course, info);
   }
@@ -2982,6 +3063,64 @@
     tag.className = `jcp-badge jcp-row-status ${className}`;
     tag.textContent = text;
     target.appendChild(tag);
+  }
+
+  function addConflictStatus(target, text, matches, ownedClass) {
+    const tag = document.createElement("button");
+    tag.type = "button";
+    tag.className = `jcp-badge jcp-conflict-tag jcp-conflict-details ${ownedClass}`;
+    tag.setAttribute("aria-expanded", "false");
+    tag.setAttribute("aria-label", `${text}，查看冲突课程`);
+    tag.appendChild(document.createTextNode(text));
+    const popover = document.createElement("span");
+    popover.className = "jcp-conflict-popover";
+    popover.setAttribute("role", "tooltip");
+    const title = document.createElement("strong");
+    title.textContent = "与以下已选课程冲突";
+    popover.appendChild(title);
+    const list = document.createElement("ul");
+    for (let i = 0; i < matches.length; i += 1) {
+      const item = document.createElement("li");
+      item.appendChild(document.createTextNode(matches[i].label || "未命名课程"));
+      list.appendChild(item);
+    }
+    popover.appendChild(list);
+    tag.appendChild(popover);
+    const layer = target.closest && target.closest(".panel");
+    tag.addEventListener("mouseenter", () => {
+      if (layer) layer.classList.add("jcp-conflict-popover-layer");
+      positionConflictPopover(tag);
+    });
+    tag.addEventListener("mouseleave", () => {
+      if (layer && !tag.classList.contains("jcp-popover-open")) layer.classList.remove("jcp-conflict-popover-layer");
+    });
+    tag.addEventListener("focus", () => {
+      if (layer) layer.classList.add("jcp-conflict-popover-layer");
+      positionConflictPopover(tag);
+    });
+    tag.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const open = !tag.classList.contains("jcp-popover-open");
+      tag.classList.toggle("jcp-popover-open", open);
+      tag.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) positionConflictPopover(tag);
+    });
+    tag.addEventListener("blur", () => {
+      tag.classList.remove("jcp-popover-open");
+      tag.setAttribute("aria-expanded", "false");
+      if (layer) layer.classList.remove("jcp-conflict-popover-layer");
+    });
+    target.appendChild(tag);
+  }
+
+  function positionConflictPopover(tag) {
+    const popover = tag.querySelector(".jcp-conflict-popover");
+    if (!popover) return;
+    tag.classList.remove("jcp-popover-up");
+    const rect = tag.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (popover.offsetHeight + 12 > spaceBelow && rect.top > spaceBelow) tag.classList.add("jcp-popover-up");
   }
 
   function addHeadingBadge(heading, text, className) {

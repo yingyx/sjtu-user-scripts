@@ -66,12 +66,24 @@ test("course assistant uses direct model entry without model-list requests", () 
 });
 
 test("course assistant allows multiple native course panels to stay expanded", () => {
-  assert.match(script, /@version\s+0\.10\.0-rc\.1/);
+  assert.match(script, /@version\s+0\.10\.0-rc\.2/);
   assert.match(script, /function preserveOtherExpandedCourses\(/);
   assert.match(script, /if \(panels\[i\] === clickedPanel\) continue/);
   assert.match(script, /expanded\[i\]\.body\.style\.display = "block"/);
   assert.doesNotMatch(script, /jcp-expand-all/);
   assert.doesNotMatch(script, /展开全部|收起全部/);
+});
+
+test("course assistant identifies the selected courses behind each conflict", () => {
+  assert.match(script, /function findConflictMatches\(/);
+  assert.match(script, /function addConflictStatus\(/);
+  assert.match(script, /与以下已选课程冲突/);
+  assert.match(script, /jcp-conflict-popover/);
+  assert.match(script, /function positionConflictPopover\(/);
+  assert.match(script, /jcp-popover-up/);
+  assert.match(script, /\.panel-body\.table-responsive \{ overflow: visible; \}/);
+  assert.match(script, /`冲突 \$\{rowConflictMatches\.length\} 门`/);
+  assert.match(script, /`\$\{text\} · \$\{conflictMatches\.length\}门`/);
 });
 
 test("course assistant saves and applies reusable native filter conditions", () => {

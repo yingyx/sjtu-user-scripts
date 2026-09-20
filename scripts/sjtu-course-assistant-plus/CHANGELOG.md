@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added compact conflict details showing the selected course codes and names for each conflicting class.
 - Added reusable filter conditions with local management and a native-style quick selector that applies, resets, and queries in one step.
 - Added general-education credit-gap checks and recommended conditions, with reliable handling of the school's grouped academic-progress data.
 - Extended the sanitized offline fixture and tests for filter conditions and academic-progress recommendations.

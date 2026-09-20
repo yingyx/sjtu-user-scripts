@@ -65,7 +65,7 @@ test("detector creates an independent matrix only for advanced scripts", () => {
   const released = new Map(sources);
   released.set(
     "sjtu-course-assistant-plus",
-    sources.get("sjtu-course-assistant-plus").replace("@version      0.10.0-rc.1", "@version      0.9.1"),
+    sources.get("sjtu-course-assistant-plus").replace(/^(\s*\/\/\s+@version\s+)\S+/m, "$1" + "0.9.1"),
   );
   released.set(
     "shuiyuan-privacy-mask",

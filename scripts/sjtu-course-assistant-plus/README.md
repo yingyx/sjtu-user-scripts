@@ -6,7 +6,7 @@ SJTU Course Assistant Plus enhances the SJTU course selection page with time-con
 
 ## What It Does
 
-- Marks teaching classes that conflict with your already selected courses.
+- Marks conflicting teaching classes and shows the codes and names of the selected courses involved.
 - Can hide conflicting classes and courses.
 - Saves the current course type, keyword, and advanced filters as reusable one-click filter conditions.
 - Checks unmet general-education categories from the SJTU academic-progress page and recommends filter conditions without storing personal academic records.
