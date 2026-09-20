@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1
+
+- Changed the native course accordion so opening another course no longer closes panels that are already open, without adding a separate expand-all control.
+- Added a sanitized offline page fixture derived from the live SJTU course-selection DOM for testing outside enrollment periods without retaining credentials or personal course data.
+
 ## 0.9.0
 
 - Redesigned the toolbar, course actions, summary cards, settings dialog, status badges, and responsive layout to blend more naturally into the SJTU course selection page.

@@ -2,7 +2,7 @@
 // @name         交大选课助手+
 // @name:en      SJTU Course Assistant Plus
 // @namespace    https://course.sjtu.plus/
-// @version      0.9.0
+// @version      0.9.1
 // @description  增强交大选课页面，支持冲突筛选、选课社区评价和可管理的 LLM 总结来源。
 // @description:en  Enhance SJTU course selection with conflict filtering, jCourse reviews, and manageable LLM summary providers.
 // @author       Codex
@@ -71,6 +71,7 @@
 
   function boot() {
     ensureToolbar();
+    document.addEventListener("click", preserveOtherExpandedCourses, true);
     observeDom();
     scheduleScan();
     const delayedScans = [1000, 2500, 5000];
@@ -676,6 +677,34 @@
     });
     toolbar.querySelector(".jcp-rescan").addEventListener("click", () => scanNow());
     toolbar.querySelector(".jcp-settings").addEventListener("click", openSettingsPanel);
+  }
+
+  function syncSjtuExpandToggle(toggle, expanded) {
+    if (!toggle || !toggle.classList) return;
+    toggle.classList.toggle("close1", expanded);
+    toggle.classList.toggle("expand1", !expanded);
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+
+  function preserveOtherExpandedCourses(event) {
+    if (!event || !event.target || !event.target.closest) return;
+    const heading = event.target.closest(".panel-heading.kc_head");
+    if (!heading || !heading.closest(".panel.panel-info")) return;
+    const clickedPanel = heading.closest(".panel.panel-info");
+    const panels = document.querySelectorAll(".panel.panel-info");
+    const expanded = [];
+    for (let i = 0; i < panels.length; i += 1) {
+      if (panels[i] === clickedPanel) continue;
+      const body = panels[i].querySelector(".panel-body.table-responsive, .panel-body");
+      if (body && !isElementHidden(body)) expanded.push({ body, toggle: panels[i].querySelector(".expand_close") });
+    }
+    if (!expanded.length) return;
+    window.setTimeout(() => {
+      for (let i = 0; i < expanded.length; i += 1) {
+        expanded[i].body.style.display = "block";
+        syncSjtuExpandToggle(expanded[i].toggle, true);
+      }
+    }, 0);
   }
 
   function setStatus(text) {

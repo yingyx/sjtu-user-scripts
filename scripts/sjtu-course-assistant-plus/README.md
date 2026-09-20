@@ -8,6 +8,7 @@ SJTU Course Assistant Plus enhances the SJTU course selection page with time-con
 
 - Marks teaching classes that conflict with your already selected courses.
 - Can hide conflicting classes and courses.
+- Allows multiple course panels to remain open; opening or closing one panel no longer collapses the others.
 - Adds a jCourse community link for matched courses.
 - Shows the jCourse average rating when a course can be matched.
 - Manages multiple LLM providers and generates review summaries on demand.
@@ -125,3 +126,9 @@ If summaries fail, check that:
 - Your userscript manager allows cross-origin requests for the configured domains.
 
 If the page layout changes after an SJTU system update, the script may need an update.
+
+## Offline Testing Outside Enrollment Periods
+
+The repository includes `tests/fixtures/sjtu-course-assistant-plus-page.html`. Its course-panel structure was extracted from the live SJTU page through CDP, but all course, teacher, and enrollment content has been replaced with test data and network requests are disabled.
+
+Run `python -m http.server 8765` from the repository root, then open `http://127.0.0.1:8765/tests/fixtures/sjtu-course-assistant-plus-page.html` to load the userscript from the working tree and test conflict labels, single- and multi-class layouts, and multiple simultaneously open courses. Settings are stored only in the fixture page's own `localStorage`.

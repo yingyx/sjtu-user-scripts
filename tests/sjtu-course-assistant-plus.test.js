@@ -10,6 +10,10 @@ const script = fs.readFileSync(
   path.join(root, "scripts", "sjtu-course-assistant-plus", "sjtu-course-assistant-plus.user.js"),
   "utf8",
 );
+const fixture = fs.readFileSync(
+  path.join(root, "tests", "fixtures", "sjtu-course-assistant-plus-page.html"),
+  "utf8",
+);
 
 test("course assistant keeps DeepSeek built in while supporting custom LLM sources", () => {
   assert.match(script, /const BUILT_IN_PROVIDER = \{[\s\S]*id: "deepseek"[\s\S]*builtIn: true/);
@@ -59,4 +63,22 @@ test("course assistant uses direct model entry without model-list requests", () 
   assert.doesNotMatch(script, /function refreshProviderModels\(/);
   assert.match(script, /jcp-provider-endpoint/);
   assert.match(script, /jcp-provider-model-field/);
+});
+
+test("course assistant allows multiple native course panels to stay expanded", () => {
+  assert.match(script, /@version\s+0\.9\.1/);
+  assert.match(script, /function preserveOtherExpandedCourses\(/);
+  assert.match(script, /if \(panels\[i\] === clickedPanel\) continue/);
+  assert.match(script, /expanded\[i\]\.body\.style\.display = "block"/);
+  assert.doesNotMatch(script, /jcp-expand-all/);
+  assert.doesNotMatch(script, /展开全部|收起全部/);
+});
+
+test("offline course fixture is sanitized and blocks network requests", () => {
+  assert.match(fixture, /离线脱敏测试页/);
+  assert.match(fixture, /TEST2001/);
+  assert.match(fixture, /GM_xmlhttpRequest/);
+  assert.match(fixture, /options\.onerror/);
+  assert.match(fixture, /\.\.\/\.\.\/scripts\/sjtu-course-assistant-plus\/sjtu-course-assistant-plus\.user\.js/);
+  assert.doesNotMatch(fixture, /i\.sjtu\.edu\.cn/);
 });
