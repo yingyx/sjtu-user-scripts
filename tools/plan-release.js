@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const {
   compareVersions,
+  isStableVersion,
   metadataValue,
   parseMetadata,
   parseVersion,
@@ -61,7 +62,9 @@ function extractReleaseNotes(changelog, version) {
 }
 
 function assertVersionAdvance(candidateVersion, releasedVersion) {
+  if (!isStableVersion(candidateVersion)) throw new Error(`Candidate version must be stable SemVer: ${candidateVersion}`);
   if (!parseVersion(releasedVersion)) throw new Error(`Released version is not SemVer: ${releasedVersion}`);
+  if (!isStableVersion(releasedVersion)) throw new Error(`Released version must be stable SemVer: ${releasedVersion}`);
   if (compareVersions(candidateVersion, releasedVersion) <= 0) {
     throw new Error(`Version ${candidateVersion} must be greater than released version ${releasedVersion}.`);
   }
@@ -78,6 +81,9 @@ function createReleasePlan(root, options) {
   }
   if (!parseVersion(options.expectedVersion)) {
     throw new Error(`Expected version must use SemVer: ${options.expectedVersion}`);
+  }
+  if (!isStableVersion(options.expectedVersion)) {
+    throw new Error(`Expected version must be stable SemVer: ${options.expectedVersion}`);
   }
 
   const validation = validateRepository(root);

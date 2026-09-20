@@ -17,6 +17,8 @@ release/<script-id>
 
 Never point GreasyFork or a userscript manager at `main`. Code is published only after the matching release branch advances.
 
+`main` may contain `X.Y.Z-rc.N` versions. They are validated like any other repository state but are never added to the publication matrix. A stable `X.Y.Z` version is therefore a single immutable userscript artifact, while each intervening code state has its own increasing RC number.
+
 Every publishable script must be registered in `scripts.json` and contain:
 
 ```text
@@ -57,6 +59,23 @@ npm run release:plan -- --script-id sjtu-course-assistant-plus --version 0.9.0 -
 
 The plan is derived from `scripts.json`, userscript metadata, the matching CHANGELOG section, and `greasyfork.json`. It records the release branch, tag, source URLs, commit, and SHA-256 digest of the `.user.js` artifact.
 
+For a published script, start and advance development with:
+
+```powershell
+npm run version:rc -- --script-id <script-id> --bump patch
+# After another commit changes the same .user.js:
+npm run version:rc -- --script-id <script-id>
+```
+
+Choose `minor` or `major` instead of `patch` when appropriate. Add the accumulated notes under the generated top `Unreleased` heading. When that exact artifact is ready to publish, create a separate stabilization commit:
+
+```powershell
+npm run version:stable -- --script-id <script-id>
+npm run check
+```
+
+The stabilization helper keeps the target `X.Y.Z`, removes `-rc.N`, and converts `Unreleased` to `X.Y.Z`. Do not add behavior changes to this commit.
+
 ## Normal Update Flow
 
 Normal updates of scripts with an integer `greasyForkId` have one production path:
@@ -65,7 +84,8 @@ Normal updates of scripts with an integer `greasyForkId` have one production pat
 push or merge to main
   -> Validate repository succeeds
   -> Publish userscript updates checks the exact validated commit
-  -> detect published scripts whose @version advanced
+  -> classify RC versions as validation-only
+  -> detect published scripts whose stable @version advanced
   -> create an independent dry-run plan for every candidate
   -> require every plan to succeed
   -> start one Promote userscript (internal) deployment per candidate
@@ -78,13 +98,15 @@ push or merge to main
 Detection compares each candidate `.user.js` with its release branch and fails closed when:
 
 - published code changed without a version increment;
+- a prerelease uses anything other than `X.Y.Z-rc.N`;
+- a release branch contains a prerelease version;
 - a version decreased;
 - the release branch cannot be fast-forwarded to the validated commit; or
 - repository validation fails.
 
 Planning uses a `fail-fast: false` matrix so all candidate errors are visible in one run. Promotion jobs are created only when every candidate plan succeeds. The reusable promotion job itself references `userscript-production`, binding the approval to the job that receives write access instead of to a separate placeholder job. Reviewers can approve the pending deployments together. Promotions also use `fail-fast: false`; a transient failure for one script does not cancel an unrelated script, and each promotion repeats validation and remote preflight after approval.
 
-If no published script version advanced, detection succeeds and all later publication jobs are skipped. An ordinary commit therefore does not publish anything.
+If no published stable script version advanced, detection succeeds and all later publication jobs are skipped. RC and ordinary repository commits therefore do not publish anything. Planning independently rejects prerelease versions, so Bootstrap and the reusable promotion workflow cannot bypass this rule.
 
 ## Production Gate
 
@@ -102,7 +124,7 @@ The repository variable is a kill switch for `Publish userscript updates`. Remov
 
 A new script cannot be synchronized by GreasyFork until a stable Raw source exists, while automatic publishing intentionally ignores scripts whose `greasyForkId` is `null`. Use `Bootstrap new userscript` once to resolve that bootstrap dependency:
 
-1. Complete the script, README, CHANGELOG, and `greasyfork.json` with `greasyForkId: null`.
+1. Complete the script at a stable version, along with its README, CHANGELOG, and `greasyfork.json` with `greasyForkId: null`.
 2. Merge the script to `main` and wait for `Validate repository` to pass.
 3. Open `Bootstrap new userscript`, select the `main` branch, and enter the exact script ID and version.
 4. Review its first-publication plan and approve `userscript-production`.
@@ -110,7 +132,7 @@ A new script cannot be synchronized by GreasyFork until a stable Raw source exis
 6. Create the GreasyFork page using the release-branch Raw URLs.
 7. Record the numeric GreasyFork ID in `greasyfork.json` and merge that repository-only update.
 
-Bootstrap refuses scripts that already have a GreasyFork ID, existing release branches, existing version tags, non-`main` refs, unknown IDs, and version mismatches. It cannot be used to update a published script.
+Bootstrap refuses prerelease versions, scripts that already have a GreasyFork ID, existing release branches, existing version tags, non-`main` refs, unknown IDs, and version mismatches. It cannot be used to update a published script.
 
 ## GreasyFork Synchronization
 
@@ -160,4 +182,4 @@ Do not move the tag or republish the same version. Confirm that the release-bran
 
 ### Published behavior must be reverted
 
-Create a new patch version that reverts the behavior and add a matching top CHANGELOG entry. Let the normal automatic update path publish it. Never decrement the userscript version or rewrite published history.
+Start a new patch RC line that reverts the behavior, update `Unreleased`, validate it, and then stabilize it in a separate commit. Let the normal automatic update path publish the resulting stable version. Never decrement the userscript version or rewrite published history.

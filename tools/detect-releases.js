@@ -6,8 +6,11 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const {
   compareVersions,
+  isStableVersion,
   metadataValue,
   parseMetadata,
+  parseReleaseCandidate,
+  parseVersion,
   readManifest,
   validateRepository,
 } = require("./lib/userscripts");
@@ -34,11 +37,21 @@ function normalizeSource(source) {
 }
 
 function classifyVersionState(currentVersion, currentSource, releasedVersion, releasedSource) {
-  if (!releasedVersion) return "release";
+  const current = parseVersion(currentVersion);
+  if (!current) throw new Error(`Current version is not SemVer: ${currentVersion}.`);
+  const releaseCandidate = parseReleaseCandidate(currentVersion);
+  if (current.prerelease && !releaseCandidate) {
+    throw new Error(`Prerelease version ${currentVersion} must use X.Y.Z-rc.N.`);
+  }
+  if (releasedVersion && !isStableVersion(releasedVersion)) {
+    throw new Error(`Release branch contains non-stable version ${releasedVersion}.`);
+  }
+  if (!releasedVersion) return releaseCandidate ? "release-candidate" : "release";
   const comparison = compareVersions(currentVersion, releasedVersion);
   if (comparison < 0) {
     throw new Error(`Version ${currentVersion} is lower than released version ${releasedVersion}.`);
   }
+  if (releaseCandidate) return "release-candidate";
   if (comparison > 0) return "release";
   if (normalizeSource(currentSource) !== normalizeSource(releasedSource)) {
     throw new Error(`Published userscript content changed without advancing @version ${currentVersion}.`);
@@ -138,8 +151,8 @@ function formatSummary(result) {
     lines.push(`| ${script.scriptId} | ${script.releasedVersion} | ${script.version} | ${script.status} |`);
   }
   lines.push("", result.hasReleases
-    ? `${result.candidates.length} release candidate(s) require approval through \`userscript-production\`.`
-    : "No userscript release requires approval.", "");
+    ? `${result.candidates.length} release candidate(s) require approval through \`userscript-production\` (stable versions only).`
+    : "No stable userscript release requires approval.", "");
   return lines.join("\n");
 }
 

@@ -49,7 +49,7 @@ jobs:
       - name: Fetch release branches and tags
         run: git fetch origin --prune --tags
 
-      - name: Detect publishable version changes
+      - name: Detect stable publishable version changes
         id: detect
         env:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
