@@ -17,6 +17,8 @@
     "release:plan": "node tools/plan-release.js",
     "validate": "node tools/validate-userscripts.js",
     "test": "node --test tests/*.test.js",
+    "version:rc": "node tools/version-userscript.js rc",
+    "version:stable": "node tools/version-userscript.js stable",
     "check": "npm run validate && npm test"
   },
   "license": "UNLICENSED"

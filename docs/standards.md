@@ -35,7 +35,12 @@ Every standards-version-1 script must declare `@name`, `@namespace`, `@version`,
 ## Versions and Documentation
 
 - Use SemVer for new scripts and for existing scripts after they are migrated.
-- A `.user.js` code or metadata change should increment `@version` and add a matching top CHANGELOG entry.
+- Published-script development uses only `X.Y.Z-rc.N` prereleases, with positive, sequential `N` values. Other prerelease labels are not supported.
+- The first code or metadata change after a stable release starts the intended patch, minor, or major line at `rc.1`; each later commit that changes the `.user.js` increments `N`.
+- Keep accumulated release notes in a non-empty top `Unreleased` CHANGELOG section while the metadata version is an RC.
+- Stabilization removes `-rc.N` and renames `Unreleased` to the matching stable version. A stabilization commit must not contain behavior changes.
+- Use `npm run version:rc -- --script-id <id> --bump patch|minor|major` to start an RC line, `npm run version:rc -- --script-id <id>` to advance it, and `npm run version:stable -- --script-id <id>` to stabilize it.
+- Initial unpublished scripts may be developed at their intended first stable version before Bootstrap. After publication, use the RC lifecycle above.
 - Pure repository tooling, tests, or documentation changes do not require a userscript version increment.
 - README behavior, permissions, network requests, and limitations must match the implementation.
 

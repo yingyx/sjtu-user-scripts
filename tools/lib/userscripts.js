@@ -152,6 +152,23 @@ function parseVersion(version) {
   return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), prerelease: match[4] || "" };
 }
 
+function parseReleaseCandidate(version) {
+  const match = String(version).match(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.([1-9]\d*)$/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    number: Number(match[4]),
+    stableVersion: `${match[1]}.${match[2]}.${match[3]}`,
+  };
+}
+
+function isStableVersion(version) {
+  const parsed = parseVersion(version);
+  return Boolean(parsed && !parsed.prerelease);
+}
+
 function compareVersions(left, right) {
   const a = parseVersion(left);
   const b = parseVersion(right);
@@ -168,6 +185,49 @@ function compareVersions(left, right) {
 function latestChangelogVersion(source) {
   const match = source.match(/^##\s+\[?v?((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?)\]?/m);
   return match?.[1] || "";
+}
+
+function changelogSections(source) {
+  const lines = String(source).split(/\r?\n/);
+  const sections = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^##\s+(.+?)\s*$/);
+    if (!match) continue;
+    if (sections.length) sections[sections.length - 1].body = lines.slice(sections[sections.length - 1].start, index).join("\n").trim();
+    sections.push({ title: match[1], line: index, start: index + 1, body: "" });
+  }
+  if (sections.length) sections[sections.length - 1].body = lines.slice(sections[sections.length - 1].start).join("\n").trim();
+  return sections;
+}
+
+function changelogHeadingVersion(title) {
+  const match = String(title).match(/^\[?v?((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?)\]?(?:\s+-\s+.+)?$/);
+  return match?.[1] || "";
+}
+
+function validateChangelogVersion(version, source) {
+  const parsed = parseVersion(version);
+  if (!parsed) return [`@version must use SemVer. Found: ${version}`];
+
+  const sections = changelogSections(source);
+  const first = sections[0];
+  if (!first) return ["CHANGELOG must contain at least one level-two version section."];
+
+  if (parsed.prerelease) {
+    if (!parseReleaseCandidate(version)) {
+      return [`Prerelease @version must use X.Y.Z-rc.N with N starting at 1. Found: ${version}`];
+    }
+    if (!/^\[?Unreleased\]?$/i.test(first.title)) {
+      return [`Release candidate ${version} requires Unreleased as the first CHANGELOG section.`];
+    }
+    if (!first.body) return [`Unreleased CHANGELOG section for ${version} must not be empty.`];
+    return [];
+  }
+
+  const changelogVersion = changelogHeadingVersion(first.title);
+  return changelogVersion === version
+    ? []
+    : [`Latest CHANGELOG version must match stable @version ${version}.`];
 }
 
 function validateSyntax(root, entry) {
@@ -235,8 +295,10 @@ function validateStrictScript(root, script, source, metadata) {
   }
   const changelogPath = path.join(root, expectedChangelog);
   if (fs.existsSync(changelogPath)) {
-    const changelogVersion = latestChangelogVersion(fs.readFileSync(changelogPath, "utf8"));
-    if (changelogVersion !== version) errors.push(`${expectedChangelog} latest version must match @version ${version}.`);
+    const changelog = fs.readFileSync(changelogPath, "utf8");
+    for (const error of validateChangelogVersion(version, changelog)) {
+      errors.push(`${expectedChangelog}: ${error}`);
+    }
   }
   if (fs.existsSync(configPath)) {
     try {
@@ -349,10 +411,14 @@ function validateRepository(root) {
 }
 
 module.exports = {
+  changelogHeadingVersion,
+  changelogSections,
   compareVersions,
+  isStableVersion,
   latestChangelogVersion,
   metadataValue,
   parseMetadata,
+  parseReleaseCandidate,
   parseVersion,
   readManifest,
   renderScriptCatalog,
@@ -361,4 +427,5 @@ module.exports = {
   syncRootReadmes,
   validateRepository,
   validateRootReadmes,
+  validateChangelogVersion,
 };

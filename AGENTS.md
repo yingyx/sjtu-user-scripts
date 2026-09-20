@@ -21,7 +21,11 @@ New scripts use `standardsVersion: 1` in `scripts.json` and receive strict valid
 
 - Before editing, read the target script's README, CHANGELOG, and complete `.user.js` entry.
 - Do not migrate unrelated legacy conventions, and do not change a published script's primary `@name` or `@namespace` without explicit approval.
-- Every `.user.js` code or metadata change must increment its SemVer `@version` and add a matching top CHANGELOG entry.
+- For every commit that changes a published `.user.js` file, advance the target release candidate and update the top `Unreleased` CHANGELOG section in the same commit:
+  - From a stable version, run `npm run version:rc -- --script-id <id> --bump patch|minor|major` to create `X.Y.Z-rc.1`.
+  - From `X.Y.Z-rc.N`, run `npm run version:rc -- --script-id <id>` to create `X.Y.Z-rc.(N+1)`.
+- When the accumulated code is ready to publish, run `npm run version:stable -- --script-id <id>`. Keep that stabilization commit limited to the generated `@version` and CHANGELOG heading changes; do not mix in behavior changes.
+- Do not invent other prerelease labels. Only stable `X.Y.Z` versions are publishable; `X.Y.Z-rc.N` versions remain on `main` for validation.
 - Run `npm run check` before completion.
 
 ## Definition of done
@@ -30,7 +34,7 @@ Code, metadata, README, CHANGELOG, privacy disclosures, and tests must agree. A 
 
 The root `README.md` and `README.zh-CN.md` are maintained together. Their marked script-list blocks are generated; update them with `npm run docs:sync` instead of editing those blocks by hand. Repository-level usage or workflow changes must be reflected in both root README files.
 
-When a published script's version is advanced and merged to `main`, a successful `Validate repository` run triggers `Publish userscript updates`, whose promotion jobs require approval through the `userscript-production` environment. `Bootstrap new userscript` is only for first publication. Do not bypass a failed automatic plan with a direct release; follow `docs/release.md`.
+When a published script is stabilized and merged to `main`, a successful `Validate repository` run triggers `Publish userscript updates`, whose promotion jobs require approval through the `userscript-production` environment. Release-candidate versions never trigger publication. `Bootstrap new userscript` is only for first publication and also accepts stable versions only. Do not bypass a failed automatic plan with a direct release; follow `docs/release.md`.
 
 ## Commit messages
 
