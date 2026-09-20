@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Automatically saved completed reports, source evidence and successful follow-up conversations to local userscript storage.
+- Added a matching history panel with offline reopening, continued follow-ups and confirmed per-record deletion.
+- Limited history to 20 records and 8 MiB without automatic eviction; storage failures keep the current result and offer retry.
+- Reused existing storage grants, kept credentials out of history snapshots, and rejected stale updates and unsafe stored source URLs.
+
 ## 0.2.2
 
 - Normalized numeric-string topic IDs, rejected invalid IDs explicitly, and preserved earlier relevant results across recovery rounds.

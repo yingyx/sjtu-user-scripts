@@ -22,17 +22,20 @@ function harness(extra = {}) {
   const context = vm.createContext({
     window: { setTimeout() {}, addEventListener() {} },
     GM_getValue: () => ({}), location: { origin: "https://example.test" },
+    URL, TextEncoder, crypto: require("node:crypto").webcrypto,
     ...extra,
   });
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     globalThis.api = {
       searchWithRecovery, selectRelevant, conversationContext, evidence, planQuestion, reviewGaps, makeReport, planFollowup, mountLauncher, syncLauncherStyle, state,
+      readHistory, writeHistory, saveHistory, deleteHistory, openHistory, showHistory, buildUi, render, persistSession, setRunning,
       configure: function (options) {
         if (options.discourse) discourse = options.discourse;
         if (options.model) model = options.model;
         if (options.native) nativeSearchButton = options.native;
         if (options.button) launcherButton = options.button;
         if (options.host) launcherHost = options.host;
+        if (options.surface) surface = options.surface;
       }
     };
   })();`), context);
@@ -42,6 +45,143 @@ function harness(extra = {}) {
 function searchResponse(titles) {
   return { topics: titles.map((title, index) => ({ id: index + 1, title, views: 1 })), posts: [] };
 }
+
+function historySession() {
+  return {
+    question: "如何学习", plan: { queries: ["学习"], angles: ["方法"] },
+    documents: [{ id: 1, title: "经验", url: "https://example.test/t/topic/1", content: "正文", postsRead: 1 }],
+    sources: [{ id: "S1", title: "经验", url: "https://example.test/t/topic/1", postsRead: 1 }],
+    report: { title: "报告", summary: "摘要", findings: [{ heading: "方法", detail: "结论", sourceIds: ["S1"] }], uncertainties: [], suggestedQuestions: [] },
+    conversation: [{ question: "进一步说明", answer: "回答", sourceIds: ["S1"] }], searchHistory: [{ query: "学习", count: 1 }],
+  };
+}
+
+function memoryStorage() {
+  const values = new Map();
+  return { values, GM_getValue: (key, fallback) => values.has(key) ? values.get(key) : fallback, GM_setValue: (key, value) => values.set(key, value) };
+}
+
+test("history survives reload and updates the same conversation without storing credentials", () => {
+  const storage = memoryStorage();
+  const api = harness(storage);
+  const session = historySession();
+  session.config = { apiKey: "secret-key" };
+  api.saveHistory(session);
+  const id = session.historyId;
+  session.conversation.push({ question: "追加", answer: "新回答", sourceIds: ["S1"] });
+  api.saveHistory(session);
+  const reloaded = harness(storage).readHistory();
+  assert.equal(reloaded.length, 1);
+  assert.equal(reloaded[0].id, id);
+  assert.equal(reloaded[0].session.conversation.length, 2);
+  assert.equal(reloaded[0].session.documents[0].content, "正文");
+  assert.doesNotMatch(JSON.stringify(reloaded), /secret-key|apiKey/);
+});
+
+test("history capacity and storage failures preserve existing data", () => {
+  const storage = memoryStorage();
+  const api = harness(storage);
+  for (let i = 0; i < 20; i += 1) api.saveHistory(historySession());
+  const before = storage.values.get("shuiyuanDeepSearch.history.v1");
+  const unsaved = historySession();
+  assert.throws(() => api.saveHistory(unsaved), /容量上限/);
+  assert.equal(unsaved.historyId, undefined);
+  assert.equal(storage.values.get("shuiyuanDeepSearch.history.v1"), before);
+  assert.throws(() => api.writeHistory([{ payload: "文".repeat(3 * 1024 * 1024) }]), /容量上限/);
+  const failing = harness({ ...storage, GM_setValue: () => { throw new Error("quota"); } });
+  assert.throws(() => failing.writeHistory([]), /quota/);
+  assert.equal(storage.values.get("shuiyuanDeepSearch.history.v1"), before);
+});
+
+test("corrupt or future history is not overwritten; stale sessions cannot resurrect deletions", () => {
+  const storage = memoryStorage();
+  const api = harness(storage);
+  storage.values.set("shuiyuanDeepSearch.history.v1", '{"version":2,"entries":[]}');
+  assert.throws(() => api.saveHistory(historySession()), /格式不兼容/);
+  assert.equal(JSON.parse(storage.values.get("shuiyuanDeepSearch.history.v1")).version, 2);
+  storage.values.delete("shuiyuanDeepSearch.history.v1");
+  const session = historySession();
+  api.saveHistory(session);
+  const stale = JSON.parse(JSON.stringify(session));
+  api.saveHistory(session);
+  assert.throws(() => api.saveHistory(stale), /其他页面/);
+  api.deleteHistory(session.historyId);
+  assert.equal(api.readHistory().length, 0);
+  assert.throws(() => api.saveHistory(session), /删除/);
+});
+
+// Minimal DOM model: exercise rendering and event handlers without a browser.
+class HistoryNode {
+  constructor(tag = "div") { this.tag = tag; this.children = []; this.dataset = {}; this.events = {}; this.attributes = {}; this.hidden = false; this.value = ""; this.classList = { add() {} }; }
+  appendChild(node) { this.children.push(node); return node; }
+  append(...nodes) { nodes.forEach((node) => this.appendChild(node)); }
+  get firstChild() { return this.children[0]; }
+  removeChild(node) { this.children.splice(this.children.indexOf(node), 1); }
+  set textContent(value) { this.children = []; this.content = value; }
+  get textContent() { return (this.content || "") + this.children.map((node) => node.textContent).join(""); }
+  setAttribute(key, value) { this.attributes[key] = value; if (key === "hidden") this.hidden = true; }
+  removeAttribute(key) { delete this.attributes[key]; if (key === "hidden") this.hidden = false; }
+  addEventListener(type, handler) { this.events[type] = handler; }
+  focus() { this.focused = true; }
+}
+
+function historyUi(storage) {
+  const api = harness({ ...storage, document: {
+    createElement: (tag) => new HistoryNode(tag), createElementNS: (_ns, tag) => new HistoryNode(tag),
+    createTextNode: (text) => { const node = new HistoryNode("text"); node.textContent = text; return node; }, addEventListener() {},
+  } });
+  api.configure({ surface: new HistoryNode() });
+  api.buildUi();
+  return api;
+}
+
+test("history UI restores report and cited turns offline, confirms deletion and guards active work", () => {
+  const storage = memoryStorage();
+  const api = historyUi(storage);
+  const session = historySession();
+  api.saveHistory(session);
+  api.showHistory();
+  assert.match(api.state.ui.history.textContent, /如何学习/);
+  api.openHistory(session.historyId);
+  assert.match(api.state.ui.output.textContent, /进一步说明/);
+  assert.match(api.state.ui.output.textContent, /新回答|回答/);
+  assert.equal(api.state.session.sources[0].id, "S1");
+  assert.equal(api.state.ui.history.hidden, true);
+  api.state.running = true;
+  api.setRunning(true);
+  assert.equal(api.state.ui.historyButton.disabled, true);
+  api.deleteHistory(session.historyId);
+  assert.equal(api.readHistory().length, 1);
+  api.state.running = false;
+  api.showHistory();
+  const row = api.state.ui.history.children.at(-1);
+  const remove = row.children[1];
+  remove.events.click();
+  assert.equal(api.readHistory().length, 1);
+  assert.equal(remove.textContent, "确认删除");
+  remove.events.click();
+  assert.equal(api.readHistory().length, 0);
+  assert.equal(api.state.session, null);
+  assert.equal(api.state.ui.output.hidden, true);
+});
+
+test("save failure leaves the visible report and offers retry; unsafe stored links cannot open", () => {
+  const storage = memoryStorage();
+  let fail = true;
+  const api = historyUi({ ...storage, GM_setValue: (key, value) => { if (fail) throw new Error("quota"); storage.GM_setValue(key, value); } });
+  api.state.session = historySession();
+  api.render(api.state.session);
+  api.persistSession();
+  assert.match(api.state.ui.output.textContent, /报告/);
+  assert.equal(api.state.ui.retrySave.hidden, false);
+  fail = false;
+  api.state.ui.retrySave.events.click();
+  assert.equal(api.state.ui.retrySave.hidden, true);
+  const entries = api.readHistory();
+  entries[0].session.sources[0].url = "javascript:alert(1)";
+  api.writeHistory(entries);
+  assert.throws(() => api.openHistory(entries[0].id), /来源无效/);
+});
 
 test("numeric-string topic IDs retain actual search hits without another search round", async () => {
   const api = harness();
