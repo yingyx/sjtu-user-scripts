@@ -52,6 +52,7 @@
     <li><a id="tab_kklx_11_fixture" href="javascript:void(0);">公共选修课</a></li>
   </ul>
   <div id="contentBox"></div>
+  <div id="more"><font>[<a href="javascript:void(0);">点此查看更多</a>]</font></div>
   <div class="right_div">
     <div class="outer_xkxx_list"><h6>(TEST9001)已选测试课程 - 2.0 学分</h6><ul><li class="list-group-item">测试教学班 测试教师<p class="time">星期二第3-4节{1-16周}</p></li></ul></div>
     <div class="outer_xkxx_list"><h6>(TEST9002)第二门已选测试课程 - 2.0 学分</h6><ul><li class="list-group-item">测试教学班 测试教师<p class="time">星期二第4-5节{1-8周}</p></li></ul></div>
@@ -73,6 +74,13 @@
           ],
         },
       ];
+      for (let i = 1; i <= 12; i += 1) {
+        courses.push({
+          code: `TEST4${String(i).padStart(3, "0")}`,
+          name: `长列表滚动示例 ${i}`,
+          rows: [{ teacher: `测试教师${i}`, time: `星期五第${i % 2 ? "1-2" : "3-4"}节{1-16周}` }],
+        });
+      }
 
       function rowHtml(course, row, index) {
         return `<tr class="body_tr">
@@ -112,6 +120,17 @@
       let panels = "";
       for (let i = 0; i < courses.length; i += 1) panels += panelHtml(courses[i], i);
       document.querySelector("#contentBox").innerHTML = panels;
+
+      document.querySelector("#more a").addEventListener("click", function loadMoreFixtureCourses() {
+        if (this.getAttribute("aria-disabled") === "true") return;
+        this.setAttribute("aria-disabled", "true");
+        window.setTimeout(() => {
+          const extra = { code: "TEST3001", name: "自动加载示例", rows: [{ teacher: "测试教师戊", time: "星期四第1-2节{1-16周}" }] };
+          document.querySelector("#contentBox").insertAdjacentHTML("beforeend", panelHtml(extra, courses.length));
+          document.querySelector("#more").remove();
+          document.querySelector(".fixture-note").setAttribute("data-auto-loaded", "true");
+        }, 80);
+      });
 
       document.addEventListener("click", (event) => {
         const heading = event.target.closest && event.target.closest(".panel-heading.kc_head");

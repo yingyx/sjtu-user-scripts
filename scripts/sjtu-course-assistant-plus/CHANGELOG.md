@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Automatically activates the native `点此查看更多` link when it reaches the viewport, loading the next batch of courses.
 - Added compact conflict details showing the selected course codes and names for each conflicting class.
 - Added reusable filter conditions with local management and a native-style quick selector that applies, resets, and queries in one step.
 - Added general-education credit-gap checks and recommended conditions, with reliable handling of the school's grouped academic-progress data.

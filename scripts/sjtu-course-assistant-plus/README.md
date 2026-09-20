@@ -11,6 +11,7 @@ SJTU Course Assistant Plus enhances the SJTU course selection page with time-con
 - Saves the current course type, keyword, and advanced filters as reusable one-click filter conditions.
 - Checks unmet general-education categories from the SJTU academic-progress page and recommends filter conditions without storing personal academic records.
 - Allows multiple course panels to remain open; opening or closing one panel no longer collapses the others.
+- Automatically loads more courses as the native load-more control reaches the viewport.
 - Adds a jCourse community link for matched courses.
 - Shows the jCourse average rating when a course can be matched.
 - Manages multiple LLM providers and generates review summaries on demand.

@@ -2,7 +2,7 @@
 // @name         交大选课助手+
 // @name:en      SJTU Course Assistant Plus
 // @namespace    https://course.sjtu.plus/
-// @version      0.10.0-rc.2
+// @version      0.10.0-rc.3
 // @description  增强交大选课页面，支持筛选条件、冲突筛选、选课社区评价和可管理的 LLM 总结来源。
 // @description:en  Enhance SJTU course selection with saved filter conditions, conflict filtering, jCourse reviews, and manageable LLM summary providers.
 // @author       Codex
@@ -28,6 +28,7 @@
   const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 14;
   const CACHE_MAX_ENTRIES = 250;
   const SCAN_DEBOUNCE_MS = 350;
+  const LOAD_MORE_WAIT_TIMEOUT_MS = 8000;
   const EXPAND_WAIT_TIMEOUT_MS = 4000;
   const EXPAND_WAIT_INTERVAL_MS = 150;
   const ACADEMIC_PROGRESS_PAGE = "/xjyj/xsxyqk_ckXsXyxxHtmlView.html?gnmkdm=N551225&layout=default";
@@ -59,6 +60,12 @@
     errorCount: 0,
     zeroDomReported: false,
     noticeTimer: 0,
+    loadMoreObserver: null,
+    loadMoreControl: null,
+    loadMorePending: false,
+    loadMoreFailedControl: null,
+    loadMoreFallbackBound: false,
+    loadMoreFallbackTimer: 0,
   };
 
   injectStyles();
@@ -76,6 +83,7 @@
     ensureToolbar();
     document.addEventListener("click", preserveOtherExpandedCourses, true);
     observeDom();
+    ensureAutoLoadMore();
     scheduleScan();
     const delayedScans = [1000, 2500, 5000];
     for (let i = 0; i < delayedScans.length; i += 1) {
@@ -1767,6 +1775,98 @@
     state.observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
   }
 
+  function findLoadMoreControl() {
+    const containers = toArray(document.querySelectorAll("#more, #contentBox, .tjxk_list"));
+    for (let i = 0; i < containers.length; i += 1) {
+      const controls = containers[i].querySelectorAll("button, a, [role='button'], input[type='button'], input[type='submit']");
+      for (let j = 0; j < controls.length; j += 1) {
+        const control = controls[j];
+        const label = normalizeText(control.value || control.textContent || "");
+        if (/^(?:点击|点此)?(?:加载|查看)更多(?:课程)?$/.test(label)) return control;
+      }
+    }
+    return null;
+  }
+
+  function isLoadMoreControlReady(control) {
+    if (!control || !document.documentElement.contains(control)) return false;
+    if (control.disabled || control.getAttribute("aria-disabled") === "true" || control.classList.contains("disabled")) return false;
+    const style = window.getComputedStyle(control);
+    return style.display !== "none" && style.visibility !== "hidden" && control.getClientRects().length > 0;
+  }
+
+  function isNearViewport(control) {
+    if (!isLoadMoreControlReady(control)) return false;
+    const rect = control.getBoundingClientRect();
+    return rect.top <= window.innerHeight + 120 && rect.bottom >= -120;
+  }
+
+  function observeLoadMoreControl(control) {
+    if (!control || state.loadMorePending || state.loadMoreFailedControl === control) return;
+    if (state.loadMoreObserver) {
+      state.loadMoreObserver.disconnect();
+      state.loadMoreObserver.observe(control);
+      return;
+    }
+    if (!state.loadMoreFallbackBound) {
+      state.loadMoreFallbackBound = true;
+      window.addEventListener("scroll", () => {
+        clearTimeout(state.loadMoreFallbackTimer);
+        state.loadMoreFallbackTimer = window.setTimeout(() => {
+          if (isNearViewport(state.loadMoreControl)) triggerAutoLoadMore(state.loadMoreControl);
+        }, 80);
+      }, { passive: true });
+    }
+    if (isNearViewport(control)) triggerAutoLoadMore(control);
+  }
+
+  function ensureAutoLoadMoreObserver() {
+    if (state.loadMoreObserver || typeof window.IntersectionObserver !== "function") return;
+    state.loadMoreObserver = new IntersectionObserver((entries) => {
+      for (let i = 0; i < entries.length; i += 1) {
+        if (entries[i].isIntersecting && entries[i].target === state.loadMoreControl) {
+          triggerAutoLoadMore(entries[i].target);
+          break;
+        }
+      }
+    }, { root: null, rootMargin: "0px 0px 120px 0px", threshold: 0 });
+  }
+
+  function ensureAutoLoadMore() {
+    ensureAutoLoadMoreObserver();
+    const control = findLoadMoreControl();
+    if (control === state.loadMoreControl) return;
+    if (state.loadMoreObserver) state.loadMoreObserver.disconnect();
+    state.loadMoreControl = control;
+    if (state.loadMoreFailedControl !== control) state.loadMoreFailedControl = null;
+    observeLoadMoreControl(control);
+  }
+
+  async function triggerAutoLoadMore(control) {
+    if (state.loadMorePending || control !== state.loadMoreControl || !isLoadMoreControlReady(control)) return;
+    state.loadMorePending = true;
+    if (state.loadMoreObserver) state.loadMoreObserver.unobserve(control);
+    const beforeCount = collectCandidatePanels().length;
+    control.click();
+    const loaded = await waitForCondition(() => {
+      const nextControl = findLoadMoreControl();
+      return collectCandidatePanels().length > beforeCount
+        || !document.documentElement.contains(control)
+        || (nextControl && nextControl !== control);
+    }, LOAD_MORE_WAIT_TIMEOUT_MS);
+    state.loadMorePending = false;
+    if (!loaded) {
+      state.loadMoreFailedControl = control;
+      return;
+    }
+    state.loadMoreFailedControl = null;
+    scheduleScan();
+    window.requestAnimationFrame(() => {
+      ensureAutoLoadMore();
+      if (state.loadMoreControl === control) observeLoadMoreControl(control);
+    });
+  }
+
   function scheduleScan() {
     clearTimeout(state.scanTimer);
     state.scanTimer = window.setTimeout(scanNow, SCAN_DEBOUNCE_MS);
@@ -1774,6 +1874,7 @@
 
   function scanNow() {
     ensureToolbar();
+    ensureAutoLoadMore();
     state.selectedCourses = collectSelectedCourses();
     state.selectedSlots = collectSelectedSlotsFromCourses(state.selectedCourses);
     const courses = collectCandidatePanels();

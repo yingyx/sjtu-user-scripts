@@ -66,12 +66,24 @@ test("course assistant uses direct model entry without model-list requests", () 
 });
 
 test("course assistant allows multiple native course panels to stay expanded", () => {
-  assert.match(script, /@version\s+0\.10\.0-rc\.2/);
+  assert.match(script, /@version\s+0\.10\.0-rc\.3/);
   assert.match(script, /function preserveOtherExpandedCourses\(/);
   assert.match(script, /if \(panels\[i\] === clickedPanel\) continue/);
   assert.match(script, /expanded\[i\]\.body\.style\.display = "block"/);
   assert.doesNotMatch(script, /jcp-expand-all/);
   assert.doesNotMatch(script, /展开全部|收起全部/);
+});
+
+test("course assistant loads more courses when the native control reaches the viewport", () => {
+  assert.match(script, /function findLoadMoreControl\(/);
+  assert.match(script, /#more, #contentBox, \.tjxk_list/);
+  assert.match(script, /点此/);
+  assert.match(script, /new IntersectionObserver\(/);
+  assert.match(script, /function triggerAutoLoadMore\(/);
+  assert.match(script, /state\.loadMorePending/);
+  assert.match(script, /collectCandidatePanels\(\)\.length > beforeCount/);
+  assert.match(fixture, /id="more"/);
+  assert.match(fixture, /点此查看更多/);
 });
 
 test("course assistant identifies the selected courses behind each conflict", () => {
