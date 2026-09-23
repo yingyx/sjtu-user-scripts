@@ -64,6 +64,7 @@ function createUserscript(root, options) {
   const files = [
     ["userscript.user.js.tmpl", `${options.id}.user.js`],
     ["README.md.tmpl", "README.md"],
+    ["README.zh-CN.md.tmpl", "README.zh-CN.md"],
     ["CHANGELOG.md.tmpl", "CHANGELOG.md"],
     ["greasyfork.json.tmpl", "greasyfork.json"],
   ];
@@ -102,7 +103,7 @@ function createUserscript(root, options) {
     }
     throw error;
   }
-  return `Created scripts/${options.id} and registered standardsVersion 1.`;
+  return `Created scripts/${options.id} with bilingual metadata and documentation, and registered standardsVersion 1.`;
 }
 
 if (require.main === module) {

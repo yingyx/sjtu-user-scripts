@@ -84,8 +84,15 @@ test("new scripts are strict while legacy scripts remain compatible", () => {
     assert.equal(generatedConfig.greasyForkId, null);
     assert.equal(generatedConfig.codeSyncUrl, "https://raw.githubusercontent.com/example/repo/release/demo-helper/scripts/demo-helper/demo-helper.user.js");
     assert.match(generatedSource, /^\/\/ @license\s+UNLICENSED$/m);
+    assert.match(generatedSource, /^\/\/ @name\s+Demo Helper$/m);
+    assert.match(generatedSource, /^\/\/ @name:zh-CN\s+示例助手$/m);
+    assert.match(generatedSource, /^\/\/ @description\s+Adds a safe and readable helper/m);
+    assert.match(generatedSource, /^\/\/ @description:zh-CN\s+为示例页面提供/m);
+    assert.doesNotMatch(generatedSource, /@(?:name|description):en\b/);
     assert.match(fs.readFileSync(path.join(temporaryRoot, "README.md"), "utf8"), /Demo Helper/);
     assert.match(fs.readFileSync(path.join(temporaryRoot, "README.zh-CN.md"), "utf8"), /示例助手/);
+    assert.match(fs.readFileSync(path.join(temporaryRoot, "scripts", "demo-helper", "README.md"), "utf8"), /English \| \[简体中文\]/);
+    assert.match(fs.readFileSync(path.join(temporaryRoot, "scripts", "demo-helper", "README.zh-CN.md"), "utf8"), /\[English\].*简体中文/);
 
     const incomplete = validateRepository(temporaryRoot);
     assert.ok(incomplete.errors.some((error) => error.includes("scaffold implementation marker")));
@@ -103,6 +110,15 @@ test("new scripts are strict while legacy scripts remain compatible", () => {
       fs.readFileSync(readmePath, "utf8").replace(
         "TODO(userscript): Replace this paragraph with the exact entry point, interactions, and failure states.",
         "Refresh the example page after installation. The helper records its enabled state on the root element and leaves unmatched pages unchanged.",
+      ),
+      "utf8",
+    );
+    const chineseReadmePath = path.join(temporaryRoot, "scripts", "demo-helper", "README.zh-CN.md");
+    fs.writeFileSync(
+      chineseReadmePath,
+      fs.readFileSync(chineseReadmePath, "utf8").replace(
+        "TODO(userscript): 请用准确的入口、交互方式和失败状态替换本段。",
+        "安装后刷新示例页面。助手会在根元素记录启用状态，并且不会修改不匹配的页面。",
       ),
       "utf8",
     );

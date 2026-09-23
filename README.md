@@ -24,6 +24,7 @@ English | [简体中文](README.zh-CN.md)
 │   └── <script-id>/
 │       ├── <script-id>.user.js
 │       ├── README.md
+│       ├── README.zh-CN.md
 │       ├── CHANGELOG.md
 │       └── greasyfork.json
 ├── templates/userscript/
@@ -67,10 +68,10 @@ Coding agents can start from a natural-language request such as:
 For deterministic scaffolding, agents use:
 
 ```powershell
-npm run new -- --id <script-id> --name <localized-name> --name-en <English-name> --description <localized-description> --description-en <English-description> --match <URL-pattern>
+npm run new -- --id <script-id> --name <Chinese-name> --name-en <English-name> --description <Chinese-description> --description-en <English-description> --match <URL-pattern>
 ```
 
-New scripts receive strict validation immediately. Existing scripts are migrated explicitly rather than during unrelated work, and all current registrations are now migrated. See `docs/agent-development.md` and `docs/standards.md`.
+New scripts receive English-primary metadata with Simplified Chinese localization, paired English and Chinese README files, and strict validation immediately. Existing scripts are migrated explicitly rather than during unrelated work. See `docs/agent-development.md` and `docs/standards.md`.
 
 ## Release Workflow
 

@@ -34,9 +34,9 @@ The Agent derives the internal scaffold arguments, runs the generator, implement
 ## Scaffold interface
 
 ```powershell
-npm run new -- --id shuiyuan-op-only --name "Shuiyuan Original Poster Only" --name-en "Shuiyuan Original Poster Only" --description "Shows only posts by the topic author." --description-en "Shows only posts by the topic author." --match "https://shuiyuan.sjtu.edu.cn/t/*"
+npm run new -- --id shuiyuan-op-only --name "水源只看楼主" --name-en "Shuiyuan Original Poster Only" --description "仅显示主题作者发布的帖子。" --description-en "Show only posts written by the topic author." --match "https://shuiyuan.sjtu.edu.cn/t/*"
 ```
 
-The generator refuses duplicate IDs, non-kebab-case IDs, global matches, incomplete arguments, and existing target directories. It creates the four required files, registers the new script with `standardsVersion: 1`, and refreshes the generated script lists in both root README files. The implementation marker deliberately makes strict validation fail until real behavior replaces it.
+The generator refuses duplicate IDs, non-kebab-case IDs, global matches, incomplete arguments, and existing target directories. It creates the five required files, including English and Simplified Chinese README files, registers the new script with `standardsVersion: 1`, and refreshes the generated script lists in both root README files. English is the unqualified metadata language, while `:zh-CN` keys carry Simplified Chinese. The implementation and documentation markers deliberately make strict validation fail until real behavior replaces them.
 
 The tooling test suite exercises this path end to end in a temporary repository: generation must produce neutral `UNLICENSED` metadata, valid GreasyFork URLs, and synchronized bilingual catalogs; incomplete code, documentation, or catalog output must fail; and a completed scaffold must pass strict repository validation.

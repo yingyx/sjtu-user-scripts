@@ -68,10 +68,10 @@ function scriptCatalog(root, locale, scripts = readManifest(root)) {
     const metadata = parseMetadata(source);
     const localizedCatalog = script.catalog?.[locale] || {};
     const name = localizedCatalog.name || (useChinese
-      ? metadataValue(metadata, "name") || script.name || script.id
+      ? metadataValue(metadata, "name:zh-CN") || metadataValue(metadata, "name") || script.name || script.id
       : metadataValue(metadata, "name:en") || script.name || metadataValue(metadata, "name") || script.id);
     const description = localizedCatalog.description || (useChinese
-      ? metadataValue(metadata, "description") || metadataValue(metadata, "description:en")
+      ? metadataValue(metadata, "description:zh-CN") || metadataValue(metadata, "description") || metadataValue(metadata, "description:en")
       : metadataValue(metadata, "description:en") || metadataValue(metadata, "description"));
     return { ...script, name, description };
   });
@@ -285,13 +285,15 @@ function validateStrictScript(root, script, source, metadata) {
   if (/(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})/.test(source)) errors.push(`${expectedEntry} appears to contain a hard-coded secret.`);
   if (source.includes("TODO(userscript)")) errors.push(`${expectedEntry} still contains the scaffold implementation marker.`);
 
-  const readmePath = path.join(root, expectedReadme);
-  if (fs.existsSync(readmePath)) {
+  const readmePaths = [expectedReadme, `${folder}/README.zh-CN.md`];
+  for (const relativeReadme of readmePaths) {
+    const readmePath = path.join(root, relativeReadme);
+    if (!fs.existsSync(readmePath)) continue;
     const readme = fs.readFileSync(readmePath, "utf8");
-    if (readme.trim().length < 200) errors.push(`${expectedReadme} is too short.`);
-    if (!/(Privacy|隐私)/i.test(readme)) errors.push(`${expectedReadme} must document privacy and network behavior.`);
-    if (!/(Installation|安装)/i.test(readme)) errors.push(`${expectedReadme} must document installation.`);
-    if (readme.includes("TODO(userscript)")) errors.push(`${expectedReadme} still contains the scaffold documentation marker.`);
+    if (readme.trim().length < 200) errors.push(`${relativeReadme} is too short.`);
+    if (!/(Privacy|隐私)/i.test(readme)) errors.push(`${relativeReadme} must document privacy and network behavior.`);
+    if (!/(Installation|安装)/i.test(readme)) errors.push(`${relativeReadme} must document installation.`);
+    if (readme.includes("TODO(userscript)")) errors.push(`${relativeReadme} still contains the scaffold documentation marker.`);
   }
   const changelogPath = path.join(root, expectedChangelog);
   if (fs.existsSync(changelogPath)) {

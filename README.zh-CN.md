@@ -24,6 +24,7 @@
 │   └── <script-id>/
 │       ├── <script-id>.user.js
 │       ├── README.md
+│       ├── README.zh-CN.md
 │       ├── CHANGELOG.md
 │       └── greasyfork.json
 ├── templates/userscript/
@@ -70,7 +71,7 @@ Agent 使用以下命令生成确定性的脚手架：
 npm run new -- --id <script-id> --name <中文名称> --name-en <English-name> --description <中文简介> --description-en <English-description> --match <URL-pattern>
 ```
 
-新脚本从创建时就接受严格校验。详见 `docs/agent-development.md` 和 `docs/standards.md`。
+新脚本会生成英文主 metadata、简体中文本地化字段，以及相互链接的中英文 README，并从创建时就接受严格校验。详见 `docs/agent-development.md` 和 `docs/standards.md`。
 
 ## 发布流程
 

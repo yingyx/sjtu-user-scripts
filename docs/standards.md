@@ -8,7 +8,7 @@ This document defines the engineering standards for userscripts in this reposito
 - Keep the distributable entry at `scripts/<id>/<id>.user.js`.
 - Register every distributable script in `scripts.json`.
 - New entries include `"standardsVersion": 1`; do not add it to an existing entry as part of unrelated work.
-- Keep a README, CHANGELOG, and `greasyfork.json` beside each entry file.
+- Keep an English `README.md`, a Simplified Chinese `README.zh-CN.md`, a CHANGELOG, and `greasyfork.json` beside each entry file.
 - The published `.user.js` must remain standalone and readable.
 - Keep the generated script lists in `README.md` and `README.zh-CN.md` synchronized with `npm run docs:sync`.
 
@@ -17,10 +17,11 @@ This document defines the engineering standards for userscripts in this reposito
 Every standards-version-1 script must declare `@name`, `@namespace`, `@version`, `@description`, `@license`, `@run-at`, `@grant`, at least one precise `@match`/`@include`, and only the permissions and network domains it actually uses.
 
 - Keep an existing script's primary `@name` and `@namespace` stable.
+- English is the primary metadata language: unqualified `@name` and `@description` contain English text.
+- Every script also declares Simplified Chinese through `@name:zh-CN` and `@description:zh-CN`. Do not duplicate the primary English values in `@name:en` or `@description:en`.
 - Use an explicit SPDX license identifier, or `UNLICENSED` when the repository grants no license. Do not infer or generate a copyright owner.
 - Do not add `@downloadURL` or `@updateURL` when GreasyFork is the distribution source.
 - Avoid global URL matches and wildcard network access. A script that must contact user-configured hosts may use `@connect *` only with explicit user approval and a `scripts.json` `permissions.allowWildcardConnect` exception containing a concrete reason; keep known/common `@connect` domains alongside it.
-- Use localized metadata keys when a script provides names or descriptions in multiple languages.
 
 ## Code and Security
 
@@ -43,6 +44,8 @@ Every standards-version-1 script must declare `@name`, `@namespace`, `@version`,
 - Initial unpublished scripts may be developed at their intended first stable version before Bootstrap. After publication, use the RC lifecycle above.
 - Pure repository tooling, tests, or documentation changes do not require a userscript version increment.
 - README behavior, permissions, network requests, and limitations must match the implementation.
+- `README.md` is the canonical English public document and `README.zh-CN.md` is its complete Simplified Chinese counterpart. Keep their claims and section coverage equivalent and link them to each other.
+- Keep engineering documentation, code identifiers, technical comments, tests, and CHANGELOG entries in English. A script's user-facing interface may remain in the target site's primary language.
 
 ## Validation
 
