@@ -66,7 +66,7 @@ test("course assistant uses direct model entry without model-list requests", () 
 });
 
 test("course assistant allows multiple native course panels to stay expanded", () => {
-  assert.match(script, /@version\s+0\.10\.0(?!-)/);
+  assert.match(script, /@version\s+\d+\.\d+\.\d+(?:-rc\.\d+)?/);
   assert.match(script, /function preserveOtherExpandedCourses\(/);
   assert.match(script, /if \(panels\[i\] === clickedPanel\) continue/);
   assert.match(script, /expanded\[i\]\.body\.style\.display = "block"/);

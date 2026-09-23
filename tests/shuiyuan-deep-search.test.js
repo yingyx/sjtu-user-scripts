@@ -6,7 +6,7 @@ const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
 const scriptPath = path.join(root, "scripts", "shuiyuan-deep-search", "shuiyuan-deep-search.user.js");
-const readmePath = path.join(root, "scripts", "shuiyuan-deep-search", "README.md");
+const readmePath = path.join(root, "scripts", "shuiyuan-deep-search", "README.zh-CN.md");
 const source = fs.readFileSync(scriptPath, "utf8");
 const readme = fs.readFileSync(readmePath, "utf8");
 

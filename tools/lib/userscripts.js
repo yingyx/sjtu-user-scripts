@@ -73,7 +73,8 @@ function scriptCatalog(root, locale, scripts = readManifest(root)) {
     const description = localizedCatalog.description || (useChinese
       ? metadataValue(metadata, "description:zh-CN") || metadataValue(metadata, "description") || metadataValue(metadata, "description:en")
       : metadataValue(metadata, "description:en") || metadataValue(metadata, "description"));
-    return { ...script, name, description };
+    const readme = useChinese ? script.readme.replace(/README\.md$/, "README.zh-CN.md") : script.readme;
+    return { ...script, name, description, readme };
   });
 }
 
@@ -254,6 +255,12 @@ function validateStrictScript(root, script, source, metadata) {
   for (const key of ["name", "namespace", "version", "description", "license", "run-at", "grant"]) {
     if (!metadataValue(metadata, key)) errors.push(`${expectedEntry} is missing @${key}.`);
   }
+  for (const key of ["name:zh-CN", "description:zh-CN"]) {
+    if (!metadataValue(metadata, key)) errors.push(`${expectedEntry} is missing @${key}.`);
+  }
+  for (const key of ["name:en", "description:en"]) {
+    if (metadata.has(key)) errors.push(`${expectedEntry} must use the unqualified @${key.split(":")[0]} for primary English metadata instead of @${key}.`);
+  }
   if (!metadata.has("match") && !metadata.has("include")) errors.push(`${expectedEntry} needs at least one @match or @include.`);
   const version = metadataValue(metadata, "version");
   if (!parseVersion(version)) errors.push(`${expectedEntry} @version must use SemVer (X.Y.Z). Found: ${version}`);
@@ -285,7 +292,9 @@ function validateStrictScript(root, script, source, metadata) {
   if (/(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})/.test(source)) errors.push(`${expectedEntry} appears to contain a hard-coded secret.`);
   if (source.includes("TODO(userscript)")) errors.push(`${expectedEntry} still contains the scaffold implementation marker.`);
 
-  const readmePaths = [expectedReadme, `${folder}/README.zh-CN.md`];
+  const chineseReadme = `${folder}/README.zh-CN.md`;
+  if (!fs.existsSync(path.join(root, chineseReadme))) errors.push(`Missing Simplified Chinese README for ${script.id}: ${chineseReadme}`);
+  const readmePaths = [expectedReadme, chineseReadme];
   for (const relativeReadme of readmePaths) {
     const readmePath = path.join(root, relativeReadme);
     if (!fs.existsSync(readmePath)) continue;
@@ -294,6 +303,12 @@ function validateStrictScript(root, script, source, metadata) {
     if (!/(Privacy|隐私)/i.test(readme)) errors.push(`${relativeReadme} must document privacy and network behavior.`);
     if (!/(Installation|安装)/i.test(readme)) errors.push(`${relativeReadme} must document installation.`);
     if (readme.includes("TODO(userscript)")) errors.push(`${relativeReadme} still contains the scaffold documentation marker.`);
+    if (relativeReadme === expectedReadme && !/\[简体中文\]\(README\.zh-CN\.md\)/.test(readme)) {
+      errors.push(`${relativeReadme} must link to README.zh-CN.md.`);
+    }
+    if (relativeReadme === chineseReadme && !/\[English\]\(README\.md\)/.test(readme)) {
+      errors.push(`${relativeReadme} must link to README.md.`);
+    }
   }
   const changelogPath = path.join(root, expectedChangelog);
   if (fs.existsSync(changelogPath)) {

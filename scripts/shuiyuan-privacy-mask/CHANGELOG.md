@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added Simplified Chinese metadata and public documentation while retaining English as the primary language.
+
 ## 0.2.0
 
 - Start at `document-start` and install the privacy styles synchronously to prevent the signed-in identity from flashing during page startup.

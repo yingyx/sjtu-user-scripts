@@ -14,13 +14,28 @@ const {
   githubOutput,
   parseArguments,
 } = require("../tools/plan-release");
+const { stabilizeReleaseCandidate } = require("../tools/version-userscript");
 
 const root = path.join(__dirname, "..");
+let releaseRoot;
 
-function currentVersion(scriptId) {
-  const script = readManifest(root).find((item) => item.id === scriptId);
-  return metadataValue(parseMetadata(fs.readFileSync(path.join(root, script.entry), "utf8")), "version");
+function currentVersion(repositoryRoot, scriptId) {
+  const script = readManifest(repositoryRoot).find((item) => item.id === scriptId);
+  return metadataValue(parseMetadata(fs.readFileSync(path.join(repositoryRoot, script.entry), "utf8")), "version");
 }
+
+test.before(() => {
+  releaseRoot = fs.mkdtempSync(path.join(os.tmpdir(), "userscript-stable-release-"));
+  for (const fileName of ["package.json", "scripts.json", "README.md", "README.zh-CN.md"]) {
+    fs.copyFileSync(path.join(root, fileName), path.join(releaseRoot, fileName));
+  }
+  fs.cpSync(path.join(root, "scripts"), path.join(releaseRoot, "scripts"), { recursive: true });
+  stabilizeReleaseCandidate(releaseRoot, { scriptId: "shuiyuan-privacy-mask" });
+});
+
+test.after(() => {
+  fs.rmSync(releaseRoot, { recursive: true, force: true });
+});
 
 test("release argument parser supports an explicit dry run", () => {
   assert.deepEqual(
@@ -40,8 +55,8 @@ test("release argument parser supports an explicit dry run", () => {
 });
 
 test("release plan is derived from validated repository metadata", () => {
-  const version = currentVersion("shuiyuan-privacy-mask");
-  const plan = createReleasePlan(root, {
+  const version = currentVersion(releaseRoot, "shuiyuan-privacy-mask");
+  const plan = createReleasePlan(releaseRoot, {
     scriptId: "shuiyuan-privacy-mask",
     expectedVersion: version,
     sourceRef: "refs/heads/main",
@@ -59,19 +74,19 @@ test("release plan is derived from validated repository metadata", () => {
 });
 
 test("release plan rejects unsafe refs, unknown scripts, and version mismatches", () => {
-  const version = currentVersion("shuiyuan-privacy-mask");
+  const version = currentVersion(releaseRoot, "shuiyuan-privacy-mask");
   const parsed = parseVersion(version);
   const mismatchedVersion = `${parsed.major + 1}.0.0`;
-  assert.throws(() => createReleasePlan(root, {
+  assert.throws(() => createReleasePlan(releaseRoot, {
     scriptId: "shuiyuan-privacy-mask",
     expectedVersion: version,
     sourceRef: "refs/heads/feature",
   }), /must run from refs\/heads\/main/);
-  assert.throws(() => createReleasePlan(root, {
+  assert.throws(() => createReleasePlan(releaseRoot, {
     scriptId: "missing-script",
     expectedVersion: version,
   }), /Unknown script_id/);
-  assert.throws(() => createReleasePlan(root, {
+  assert.throws(() => createReleasePlan(releaseRoot, {
     scriptId: "shuiyuan-privacy-mask",
     expectedVersion: mismatchedVersion,
   }), /Version mismatch/);
@@ -94,9 +109,9 @@ test("release output files contain only the selected version notes", () => {
     const outputPath = path.join(temporaryRoot, "output.txt");
     const summaryPath = path.join(temporaryRoot, "summary.md");
     const notesPath = path.join(temporaryRoot, "notes.md");
-    const plan = createReleasePlan(root, {
+    const plan = createReleasePlan(releaseRoot, {
       scriptId: "shuiyuan-privacy-mask",
-      expectedVersion: currentVersion("shuiyuan-privacy-mask"),
+      expectedVersion: currentVersion(releaseRoot, "shuiyuan-privacy-mask"),
       dryRun: true,
     });
     fs.writeFileSync(outputPath, githubOutput(plan, notesPath), "utf8");
@@ -112,9 +127,9 @@ test("release output files contain only the selected version notes", () => {
 });
 
 test("GitHub output and internal promotion preserve the release safety gates", () => {
-  const plan = createReleasePlan(root, {
+  const plan = createReleasePlan(releaseRoot, {
     scriptId: "shuiyuan-privacy-mask",
-    expectedVersion: currentVersion("shuiyuan-privacy-mask"),
+    expectedVersion: currentVersion(releaseRoot, "shuiyuan-privacy-mask"),
     dryRun: true,
   });
   assert.throws(() => githubOutput({ ...plan, releaseName: "unsafe\noutput" }), /must be a single line/);

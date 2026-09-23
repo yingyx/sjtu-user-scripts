@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Made English the primary metadata and public-documentation language, with complete Simplified Chinese localization.
+
 ## 0.3.0
 
 - Automatically saved completed reports, source evidence and successful follow-up conversations to local userscript storage.

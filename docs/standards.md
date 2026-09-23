@@ -56,7 +56,7 @@ npm run check
 ```
 
 Run `npm run docs:sync` first after adding a script or changing catalog metadata. Validation rejects stale generated root README lists.
-When a legacy script lacks localized metadata, an optional `catalog.<locale>` name or description in `scripts.json` may supply root-documentation text without changing the published userscript.
+Generated catalogs read English from unqualified metadata and Simplified Chinese from `:zh-CN` metadata; do not maintain duplicate catalog translations in `scripts.json`.
 
 The baseline checks current metadata requirements, required files, syntax, and script-specific compatibility rules, then runs the tooling unit tests. For `standardsVersion: 1`, it additionally enforces exact paths, SemVer/changelog alignment, metadata and URL scope, readable code, a 2 MB limit, GreasyFork configuration, privacy/install documentation, secret scanning, and removal of the scaffold marker.
 

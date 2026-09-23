@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         交大选课助手+
-// @name:en      SJTU Course Assistant Plus
+// @name         SJTU Course Assistant Plus
+// @name:zh-CN   交大选课助手+
 // @namespace    https://course.sjtu.plus/
-// @version      0.10.0
-// @description  增强交大选课页面，支持筛选条件、冲突筛选、选课社区评价和可管理的 LLM 总结来源。
-// @description:en  Enhance SJTU course selection with saved filter conditions, conflict filtering, jCourse reviews, and manageable LLM summary providers.
+// @version      0.10.1-rc.1
+// @description  Enhance SJTU course selection with saved filter conditions, conflict filtering, jCourse reviews, and manageable LLM summary providers.
+// @description:zh-CN  增强交大选课页面，支持筛选条件、冲突筛选、选课社区评价和可管理的 LLM 总结来源。
 // @author       Codex
 // @license      UNLICENSED
 // @supportURL   https://github.com/yingyx/sjtu-user-scripts/issues

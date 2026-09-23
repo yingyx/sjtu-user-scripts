@@ -124,11 +124,22 @@ test("new scripts are strict while legacy scripts remain compatible", () => {
     );
     assert.deepEqual(validateRepository(temporaryRoot).errors, []);
 
+    const localizedSource = fs.readFileSync(entryPath, "utf8");
+    fs.writeFileSync(entryPath, localizedSource.replace(/^\/\/ @name:zh-CN.*\r?\n/m, ""), "utf8");
+    assert.ok(validateRepository(temporaryRoot).errors.some((error) => error.includes("missing @name:zh-CN")));
+    fs.writeFileSync(entryPath, localizedSource, "utf8");
+
+    const chineseReadme = fs.readFileSync(chineseReadmePath, "utf8");
+    fs.rmSync(chineseReadmePath);
+    assert.ok(validateRepository(temporaryRoot).errors.some((error) => error.includes("Missing Simplified Chinese README")));
+    fs.writeFileSync(chineseReadmePath, chineseReadme, "utf8");
+
     const rootReadmePath = path.join(temporaryRoot, "README.md");
     fs.writeFileSync(rootReadmePath, fs.readFileSync(rootReadmePath, "utf8").replace("Demo Helper", "Stale Helper"), "utf8");
     assert.ok(validateRepository(temporaryRoot).errors.some((error) => error.includes("generated script list is stale")));
     syncRootReadmes(temporaryRoot);
     assert.deepEqual(validateRepository(temporaryRoot).errors, []);
+    assert.match(fs.readFileSync(path.join(temporaryRoot, "README.zh-CN.md"), "utf8"), /scripts\/demo-helper\/README\.zh-CN\.md/);
 
     const wildcardSource = implemented.replace("// @grant", "// @connect      *\n// @grant");
     fs.writeFileSync(entryPath, wildcardSource, "utf8");

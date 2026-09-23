@@ -1,5 +1,7 @@
 # Shuiyuan Privacy Mask
 
+English | [简体中文](README.zh-CN.md)
+
 Shuiyuan Privacy Mask hides the signed-in account identity only in Shuiyuan's private account surfaces while leaving public conversation context intact. It is meant for screenshots, screen sharing, and browsing in public places.
 
 ## What It Does

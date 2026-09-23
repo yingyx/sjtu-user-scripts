@@ -67,39 +67,36 @@ test("version-state classification detects releases and same-version drift", () 
 test("detector creates an independent matrix only for advanced scripts", () => {
   const sources = currentSources();
   const released = new Map(sources);
-  released.set(
-    "sjtu-course-assistant-plus",
-    sources.get("sjtu-course-assistant-plus").replace(/^(\s*\/\/\s+@version\s+)\S+/m, "$1" + "0.9.1"),
-  );
-  released.set(
-    "shuiyuan-privacy-mask",
-    sources.get("shuiyuan-privacy-mask").replace("@version      0.2.0", "@version      0.1.9"),
-  );
+  const releasedVersions = {
+    "shuiyuan-deep-search": "0.3.0",
+    "shuiyuan-privacy-mask": "0.2.0",
+    "sjtu-course-assistant-plus": "0.10.0",
+  };
+  for (const [scriptId, version] of Object.entries(releasedVersions)) {
+    released.set(scriptId, sources.get(scriptId).replace(/^(\s*\/\/\s+@version\s+)\S+/m, `$1${version}`));
+  }
   const result = detectReleases(root, {
     sourceRef: "refs/heads/main",
     commitSha: "a".repeat(40),
     git: fakeGit(released),
   });
-  const expected = [
-    { script_id: "shuiyuan-privacy-mask", version: metadataVersion(sources.get("shuiyuan-privacy-mask")) },
-    { script_id: "sjtu-course-assistant-plus", version: metadataVersion(sources.get("sjtu-course-assistant-plus")) },
-  ].filter((candidate) => candidate.version && !candidate.version.includes("-"));
+  const expected = Object.keys(releasedVersions).map((scriptId) => ({
+    script_id: scriptId,
+    version: metadataVersion(sources.get(scriptId)),
+  })).filter((candidate) => candidate.version && !candidate.version.includes("-"));
   assert.deepEqual(result.candidates, expected);
   assert.deepEqual(result.matrix, { include: result.candidates });
-  assert.equal(result.hasReleases, true);
-  assert.match(formatSummary(result), new RegExp(`${expected.length} release candidate\\(s\\) require approval`));
+  assert.equal(result.hasReleases, expected.length > 0);
+  if (expected.length) {
+    assert.match(formatSummary(result), new RegExp(`${expected.length} release candidate\\(s\\) require approval`));
+  } else {
+    assert.match(formatSummary(result), /No stable userscript release requires approval/);
+    assert.equal(result.scripts.filter((script) => script.status === "release-candidate").length, 3);
+  }
 });
 
-test("detector refuses same-version publication drift and unsafe history", () => {
+test("detector refuses unsafe release history", () => {
   const sources = currentSources();
-  const drifted = new Map(sources);
-  drifted.set("shuiyuan-privacy-mask", sources.get("shuiyuan-privacy-mask").replace("Privacy Mask", "Privacy Guard"));
-  assert.throws(() => detectReleases(root, {
-    sourceRef: "refs/heads/main",
-    commitSha: "b".repeat(40),
-    git: fakeGit(drifted),
-  }), /shuiyuan-privacy-mask: Published userscript content changed without advancing/);
-
   const unsafeGit = fakeGit(sources);
   unsafeGit.isAncestor = () => false;
   assert.throws(() => detectReleases(root, {

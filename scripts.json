@@ -15,12 +15,6 @@
   {
     "id": "shuiyuan-privacy-mask",
     "name": "Shuiyuan Privacy Mask",
-    "catalog": {
-      "zh-CN": {
-        "name": "水源隐私遮罩",
-        "description": "仅隐藏水源当前账户入口及本人主页头部中的身份信息，并保留帖子作者等公开语境。"
-      }
-    },
     "entry": "scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js",
     "readme": "scripts/shuiyuan-privacy-mask/README.md",
     "changelog": "scripts/shuiyuan-privacy-mask/CHANGELOG.md",

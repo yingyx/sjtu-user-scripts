@@ -20,7 +20,7 @@ const source = fs.readFileSync(scriptPath, "utf8");
 const readme = fs.readFileSync(readmePath, "utf8");
 
 test("privacy mask installs its first-paint protection at document start", () => {
-  assert.match(source, /@version\s+0\.2\.0/);
+  assert.match(source, /@version\s+\d+\.\d+\.\d+(?:-rc\.\d+)?/);
   assert.match(source, /@run-at\s+document-start/);
   assert.match(
     source,

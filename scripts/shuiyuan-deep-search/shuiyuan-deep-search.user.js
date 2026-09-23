@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         水源深度搜索助手
-// @name:en      Shuiyuan Deep Search
+// @name         Shuiyuan Deep Search
+// @name:zh-CN   水源深度搜索助手
 // @namespace    https://github.com/yingyx/sjtu-user-scripts
-// @version      0.3.0
-// @description  自动拆解问题、并行检索并精读水源帖子，生成带来源链接的研究报告并支持继续追问。
-// @description:en  Decompose questions, search and read Shuiyuan topics in parallel, produce cited research reports, and support follow-up questions.
+// @version      0.3.1-rc.1
+// @description  Decompose questions, search and read Shuiyuan topics in parallel, produce cited research reports, and support follow-up questions.
+// @description:zh-CN  自动拆解问题、并行检索并精读水源帖子，生成带来源链接的研究报告并支持继续追问。
 // @author       yingyx
 // @license      UNLICENSED
 // @supportURL   https://github.com/yingyx/sjtu-user-scripts/issues

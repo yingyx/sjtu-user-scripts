@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Made English the primary metadata language and retained complete Simplified Chinese localization.
+
 ## 0.10.0
 
 - Reorganized settings into clearly separated sections, moved conflict hiding out of the toolbar, and added controls for automatic pagination and the number of reviews sent for summaries.
