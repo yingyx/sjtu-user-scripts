@@ -5,7 +5,14 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { metadataValue, parseMetadata, parseVersion, readManifest } = require("../tools/lib/userscripts");
+const {
+  isStableVersion,
+  metadataValue,
+  parseMetadata,
+  parseReleaseCandidate,
+  parseVersion,
+  readManifest,
+} = require("../tools/lib/userscripts");
 const {
   assertVersionAdvance,
   createReleasePlan,
@@ -30,7 +37,12 @@ test.before(() => {
     fs.copyFileSync(path.join(root, fileName), path.join(releaseRoot, fileName));
   }
   fs.cpSync(path.join(root, "scripts"), path.join(releaseRoot, "scripts"), { recursive: true });
-  stabilizeReleaseCandidate(releaseRoot, { scriptId: "shuiyuan-privacy-mask" });
+  const version = currentVersion(releaseRoot, "shuiyuan-privacy-mask");
+  if (parseReleaseCandidate(version)) {
+    stabilizeReleaseCandidate(releaseRoot, { scriptId: "shuiyuan-privacy-mask" });
+  } else if (!isStableVersion(version)) {
+    throw new Error(`Release-plan fixture requires a stable or RC version, found ${version}.`);
+  }
 });
 
 test.after(() => {
@@ -41,13 +53,13 @@ test("release argument parser supports an explicit dry run", () => {
   assert.deepEqual(
     parseArguments([
       "--script-id", "sjtu-course-assistant-plus",
-      "--version", "0.8.2",
+      "--version", "1.2.3",
       "--source-ref", "refs/heads/main",
       "--dry-run",
     ]),
     {
       scriptId: "sjtu-course-assistant-plus",
-      version: "0.8.2",
+      version: "1.2.3",
       sourceRef: "refs/heads/main",
       dryRun: true,
     },
