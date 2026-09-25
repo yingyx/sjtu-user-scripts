@@ -39,5 +39,14 @@
     "compatibility": {
       "disallowPrototypeArrayMethods": true
     }
+  },
+  {
+    "id": "sjtu-ics",
+    "name": "SJTU ICS Calendar Sync",
+    "entry": "scripts/sjtu-ics/sjtu-ics.user.js",
+    "readme": "scripts/sjtu-ics/README.md",
+    "changelog": "scripts/sjtu-ics/CHANGELOG.md",
+    "releaseBranch": "release/sjtu-ics",
+    "standardsVersion": 1
   }
 ]

@@ -1,4 +1,5 @@
 outputs/
+node_modules/
 *.log
 *.tmp
 CLAUDE.local.md

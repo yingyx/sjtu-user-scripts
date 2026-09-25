@@ -12,6 +12,7 @@
   },
   "scripts": {
     "docs:sync": "node tools/sync-readmes.js",
+    "ics:check": "node tools/validate-ics.js",
     "new": "node tools/create-userscript.js",
     "release:detect": "node tools/detect-releases.js",
     "release:plan": "node tools/plan-release.js",
@@ -21,5 +22,8 @@
     "version:stable": "node tools/version-userscript.js stable",
     "check": "npm run validate && npm test"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "ical.js": "^2.2.1"
+  }
 }

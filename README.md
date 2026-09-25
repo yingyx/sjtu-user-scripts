@@ -12,6 +12,7 @@ English | [简体中文](README.zh-CN.md)
 | [Shuiyuan Deep Search](scripts/shuiyuan-deep-search/README.md) | `scripts/shuiyuan-deep-search/shuiyuan-deep-search.user.js` | Decompose questions, search and read Shuiyuan topics in parallel, produce cited research reports, and support follow-up questions. |
 | [Shuiyuan Privacy Mask](scripts/shuiyuan-privacy-mask/README.md) | `scripts/shuiyuan-privacy-mask/shuiyuan-privacy-mask.user.js` | Mask the signed-in account identity in Shuiyuan's private account surfaces. |
 | [SJTU Course Assistant Plus](scripts/sjtu-course-assistant-plus/README.md) | `scripts/sjtu-course-assistant-plus/sjtu-course-assistant-plus.user.js` | Enhance SJTU course selection with saved filter conditions, conflict filtering, jCourse reviews, and manageable LLM summary providers. |
+| [SJTU ICS Calendar Sync](scripts/sjtu-ics/README.md) | `scripts/sjtu-ics/sjtu-ics.user.js` | Aggregate SJTU courses, exams, and calendar events into ICS and sync to GitHub Gist |
 <!-- END GENERATED SCRIPT LIST -->
 
 ## Repository Layout
