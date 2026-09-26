@@ -27,5 +27,8 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Install tooling dependencies
+        run: npm ci
+
       - name: Validate repository and run tooling tests
         run: npm run check
