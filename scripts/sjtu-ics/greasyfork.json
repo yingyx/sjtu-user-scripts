@@ -1,6 +1,6 @@
 {
   "scriptId": "sjtu-ics",
-  "greasyForkId": null,
+  "greasyForkId": 597465,
   "entry": "sjtu-ics.user.js",
   "releaseBranch": "release/sjtu-ics",
   "codeSyncUrl": "https://raw.githubusercontent.com/yingyx/sjtu-user-scripts/release/sjtu-ics/scripts/sjtu-ics/sjtu-ics.user.js",
