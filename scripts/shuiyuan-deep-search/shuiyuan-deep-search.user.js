@@ -2,7 +2,7 @@
 // @name         Shuiyuan Deep Search
 // @name:zh-CN   水源深度搜索助手
 // @namespace    https://github.com/yingyx/sjtu-user-scripts
-// @version      0.3.1-rc.1
+// @version      0.3.1-rc.2
 // @description  Decompose questions, search and read Shuiyuan topics in parallel, produce cited research reports, and support follow-up questions.
 // @description:zh-CN  自动拆解问题、并行检索并精读水源帖子，生成带来源链接的研究报告并支持继续追问。
 // @author       yingyx
@@ -59,6 +59,7 @@
     addLauncherStyles();
     addLauncher();
     mountLauncher();
+    installSelectionAction();
     try {
       GM_registerMenuCommand("打开水源深度搜索", open);
     } catch (error) { /* The page button remains available. */ }
@@ -79,7 +80,95 @@
       model: typeof value.model === "string" && value.model.trim() ? value.model.trim() : legacyProvider.model,
       maxTopics: integer(value.maxTopics, 3, 12, defaults.maxTopics),
       maxPosts: integer(value.maxPosts, 10, 60, defaults.maxPosts),
+      selectionEnabled: value.selectionEnabled !== false,
     };
+  }
+
+  function selectedPost(selection) {
+    if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return null;
+    const range = selection.getRangeAt(0);
+    const element = function (node) { return node.nodeType === 1 ? node : node.parentElement; };
+    const start = element(range.startContainer);
+    const end = element(range.endContainer);
+    const body = start && start.closest(".topic-post .cooked");
+    if (!body || !end || !body.contains(end) || start.closest("input,textarea,[contenteditable]") || end.closest("input,textarea,[contenteditable]")) return null;
+    if (document.querySelector(".private-message, .archetype-private_message")) return null;
+    const post = body.closest(".topic-post");
+    const article = post.querySelector("[data-post-number], article[id^='post_']") || post;
+    const number = Number(article.getAttribute("data-post-number") || (article.id || "").replace(/^post_/, ""));
+    const topic = location.pathname.match(/^\/t\/(?:[^/]+\/)?(\d+)(?:\/|$)/);
+    const quote = selection.toString().replace(/\u0000/g, "").trim();
+    if (!topic || !Number.isSafeInteger(number) || number < 1 || !quote || quote.length > 6000) return null;
+    const heading = document.querySelector("#topic-title h1");
+    return { id: Number(topic[1]), title: (heading ? heading.textContent : document.title).trim().slice(0, 240),
+      url: location.origin + "/t/topic/" + topic[1] + "/" + number, content: quote, postsRead: 1, selection: true };
+  }
+
+  function installSelectionAction() {
+    // Live in the native toolbar so Discourse owns layout, colors and hover states.
+    const action = button("", "btn btn-flat btn-icon-text sds-selection-action");
+    const icon = svgIcon("search-spark");
+    icon.setAttribute("class", "fa d-icon d-icon-search-spark svg-icon svg-string");
+    icon.setAttribute("fill", "none");
+    icon.setAttribute("stroke", "currentColor");
+    icon.setAttribute("stroke-width", "2");
+    icon.setAttribute("stroke-linecap", "round");
+    icon.setAttribute("stroke-linejoin", "round");
+    icon.style.fill = "none";
+    action.append(icon, el("span", "d-button-label", "询问"));
+    action.hidden = true;
+    action.title = "询问选中的帖子内容";
+    action.setAttribute("aria-label", "询问选中的帖子内容");
+    let captured = null;
+    function hide() { action.hidden = true; action.style.display = "none"; captured = null; }
+    function update() {
+      if (!state.config.selectionEnabled || state.running || (state.ui.overlay && !state.ui.overlay.hidden)) return hide();
+      const selection = window.getSelection();
+      captured = selectedPost(selection);
+      if (!captured) return hide();
+      const toolbar = document.querySelector(".quote-button .buttons");
+      if (!toolbar) return hide();
+      if (action.parentElement !== toolbar) toolbar.appendChild(action);
+      action.hidden = false;
+      action.style.display = "";
+    }
+    action.addEventListener("mousedown", function (event) { event.preventDefault(); });
+    action.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!state.config.selectionEnabled || !captured || state.running) return;
+      const quote = captured;
+      hide();
+      open();
+      state.selection = quote;
+      state.session = null;
+      state.ui.question.value = "";
+      clear(state.ui.output); state.ui.output.hidden = true;
+      clear(state.ui.progress); state.ui.progress.hidden = true;
+      notice("");
+      renderSelection();
+      showSettings(!configured());
+    });
+    document.addEventListener("selectionchange", update);
+    document.addEventListener("mouseup", update);
+    document.addEventListener("keyup", update);
+    // The toolbar is created asynchronously and replaced on subsequent selections.
+    new MutationObserver(update).observe(document.body, { childList: true, subtree: true });
+    state.updateSelectionAction = update;
+    update();
+  }
+
+  function renderSelection() {
+    const root = state.ui.selection;
+    if (!root) return;
+    clear(root);
+    root.hidden = !state.selection;
+    state.ui.run.textContent = state.selection ? "询问" : "开始研究";
+    if (!state.selection) return;
+    const remove = button("移除引用", "sds-muted");
+    remove.disabled = state.running;
+    remove.addEventListener("click", function () { if (!state.running) { state.selection = null; renderSelection(); } });
+    root.append(sourceLink(state.selection, "选段"), el("blockquote", "sds-quote", state.selection.content), remove);
   }
 
   function integer(value, min, max, fallback) {
@@ -165,6 +254,8 @@
     writeHistory(readHistory().filter(function (entry) { return entry.id !== id; }));
     if (state.session && state.session.historyId === id) {
       state.session = null;
+      state.selection = null;
+      renderSelection();
       clear(state.ui.output);
       state.ui.output.hidden = true;
       state.ui.question.value = "";
@@ -179,6 +270,8 @@
     session.historyId = entry.id;
     session.historyRevision = entry.revision;
     state.session = session;
+    state.selection = session.documents.find(function (doc) { return doc.selection === true; }) || null;
+    renderSelection();
     state.ui.question.value = session.question;
     clear(state.ui.progress);
     state.ui.progress.hidden = true;
@@ -359,6 +452,8 @@
     const main = el("main", "sds-main");
     const research = el("div", "sds-research");
     const label = el("label", "sds-label", "你想从水源了解什么？");
+    const selection = el("div", "sds-card");
+    selection.hidden = true;
     const question = document.createElement("textarea");
     question.rows = 4;
     question.maxLength = 2000;
@@ -376,7 +471,7 @@
     progress.hidden = true;
     const output = el("div", "sds-output");
     output.hidden = true;
-    research.append(label, actions, message, progress, output);
+    research.append(selection, label, actions, message, progress, output);
 
     const settings = buildSettings();
     settings.hidden = true;
@@ -401,7 +496,7 @@
     document.addEventListener("keydown", function (event) {
       if (event.key === "Escape" && !overlay.hidden) close();
     });
-    Object.assign(state.ui, { overlay, research, settings, settingsButton, history, historyButton, question, run, cancel, message, progress, output });
+    Object.assign(state.ui, { overlay, research, settings, settingsButton, history, historyButton, selection, question, run, cancel, message, progress, output });
   }
 
   function buildSettings() {
@@ -413,6 +508,11 @@
     const apiKey = inputField(form, "API Key", "password", "可留空（仅适用于无需鉴权的本地服务）");
     const maxTopics = inputField(form, "最多精读主题数（3–12）", "number", "8");
     const maxPosts = inputField(form, "每个主题最多读取帖子数（10–60）", "number", "30");
+    const selectionLabel = el("label", "sds-checkbox");
+    const selectionEnabled = document.createElement("input");
+    selectionEnabled.type = "checkbox";
+    selectionLabel.append(selectionEnabled, el("span", "", "选中文字询问"));
+    form.appendChild(selectionLabel);
     const back = button("返回", "sds-muted");
     const save = button("保存", "sds-primary");
     save.type = "submit";
@@ -426,14 +526,17 @@
       try {
         const modelName = model.value.trim();
         if (!modelName) throw new Error("模型名称不能为空。");
-        state.config = {
+        const config = {
           endpoint: normalizeEndpoint(endpointInput.value),
           apiKey: apiKey.value.trim(),
           model: modelName,
           maxTopics: integer(maxTopics.value, 3, 12, defaults.maxTopics),
           maxPosts: integer(maxPosts.value, 10, 60, defaults.maxPosts),
+          selectionEnabled: selectionEnabled.checked,
         };
-        GM_setValue(KEY, state.config);
+        GM_setValue(KEY, config);
+        state.config = config;
+        if (state.updateSelectionAction) state.updateSelectionAction();
         fillSettings();
         feedback.textContent = "已保存";
         feedback.dataset.type = "success";
@@ -444,7 +547,7 @@
       }
     });
     view.appendChild(form);
-    Object.assign(state.ui, { endpointInput, apiKey, model, maxTopics, maxPosts });
+    Object.assign(state.ui, { endpointInput, apiKey, model, maxTopics, maxPosts, selectionEnabled });
     return view;
   }
 
@@ -464,6 +567,7 @@
     state.ui.model.value = state.config.model;
     state.ui.maxTopics.value = String(state.config.maxTopics);
     state.ui.maxPosts.value = String(state.config.maxPosts);
+    state.ui.selectionEnabled.checked = state.config.selectionEnabled;
   }
 
   function showSettings(show) {
@@ -499,6 +603,10 @@
     state.ui.output.hidden = true;
     notice("");
     try {
+      if (state.selection) {
+        await researchSelection(question, state.selection);
+        return;
+      }
       step("plan", "拆解问题与生成检索式");
       const plan = await planQuestion(question);
       done("plan", plan.queries.length + " 个方向");
@@ -552,7 +660,30 @@
     state.requests.clear();
   }
 
+  async function researchSelection(question, quote) {
+    step("report", "理解选段并回答问题");
+    const plan = { goal: question, angles: [], queries: [] };
+    let documents = [{ ...quote }];
+    const searchHistory = [];
+    const gaps = await reviewGaps(question, plan, documents);
+    if (!gaps.sufficient && gaps.queries.length) {
+      updateStep("report", "正在补充搜索水源…");
+      // A selection is not the full topic: allow searching and reading its topic too.
+      const candidates = await searchWithRecovery(question, gaps.queries, searchHistory, new Set(), function (message) { updateStep("report", message); }, plan);
+      documents = documents.concat(await readAll(candidates.slice(0, 3)));
+      plan.queries = searchHistory.map(function (item) { return item.query; });
+    }
+    const sources = documents.map(function (doc, index) { return { id: "S" + (index + 1), title: doc.title, url: doc.url, postsRead: doc.postsRead }; });
+    const report = await makeReport(question, plan, documents, sources);
+    state.session = { question, plan, documents, sources, report, searchHistory, conversation: [] };
+    done("report", "已完成");
+    render(state.session);
+    persistSession();
+    state.ui.output.hidden = false;
+  }
+
   function setRunning(value) {
+    renderSelection();
     state.ui.question.disabled = value;
     state.ui.settingsButton.disabled = value;
     state.ui.historyButton.disabled = value;
@@ -715,8 +846,8 @@
   }
 
   async function reviewGaps(question, plan, documents) {
-    const evidence = documents.map(function (doc, i) { return { sourceId: "S" + (i + 1), title: doc.title, excerpt: doc.content.slice(0, 2500) }; });
-    const result = await model(intentGuidance + "按goal/angles查实质信息缺口，原词未命中不算缺口，无关帖不算证据。必要时给最多2个补搜词，采用帖中合理名称加缺失信息，否则queries为空。", {
+    const evidence = documents.map(function (doc, i) { return { sourceId: "S" + (i + 1), title: doc.title, selection: doc.selection === true, excerpt: doc.content.slice(0, doc.selection ? 6000 : 2500) }; });
+    const result = await model(intentGuidance + "按goal/angles查实质信息缺口，原词未命中不算缺口，无关帖不算证据。解释或概括选段时优先直接回答；只有需要额外事实才补搜。必要时给最多2个补搜词，采用帖中合理名称加缺失信息，否则queries为空。", {
       question, goal: plan.goal, angles: plan.angles, evidence, output: { sufficient: true, missing: ["尚未回答的信息需求"], queries: ["追加检索式"] },
     });
     const data = result && typeof result === "object" ? result : {};
@@ -751,7 +882,7 @@
       const doc = pair.doc;
       const content = doc.content.slice(0, remaining);
       remaining -= content.length;
-      return { sourceId: pair.source.id, title: doc.title, url: doc.url, content, provisional: doc.provisional === true };
+      return { sourceId: pair.source.id, title: doc.title, url: doc.url, content, selection: doc.selection === true, provisional: doc.provisional === true };
     }).filter(function (item) { return item.content; });
   }
 
@@ -846,7 +977,7 @@
         answerNode.textContent = "正在补充搜索水源…";
         const capacity = Math.max(0, Math.max(12, state.config.maxTopics * 3) - session.documents.length);
         if (capacity) {
-          const seen = new Set(session.documents.map(function (item) { return item.id; }));
+          const seen = new Set(session.documents.filter(function (item) { return !item.selection; }).map(function (item) { return item.id; }));
           const historyStart = session.searchHistory.length;
           const candidates = await searchWithRecovery(session.question + "\n追问：" + question, searchPlan.queries, session.searchHistory, seen, function (message) { answerNode.textContent = message; }, searchPlan);
           searchPlan.queries = session.searchHistory.slice(historyStart).map(function (item) { return item.query; });
@@ -1062,6 +1193,8 @@
   function addStyles() {
     const style = document.createElement("style");
     style.textContent = `
+      .sds-quote{margin:10px 0;max-height:160px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-weight:400}
+      .sds-checkbox{display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer}.sds-checkbox input{margin:0;accent-color:var(--tertiary,#0788c7)}
       .sds-history-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--primary-low,#ddd)}.sds-history-open{flex:1;min-width:0;border:0;padding:6px 0;color:inherit;background:transparent;text-align:left;font:inherit;cursor:pointer;overflow-wrap:anywhere}.sds-history-open small{display:block;color:var(--primary-medium,#667);margin-top:4px}.sds-history-feedback{font-size:13px;color:var(--primary-medium,#667);overflow-wrap:anywhere}.sds-history-item button:focus-visible{outline:2px solid var(--tertiary,#0788c7);outline-offset:3px}
       .sds-icon-button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
       [hidden]{display:none!important}.sds-overlay{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:24px;background:#10182080}.sds-panel{width:min(880px,100%);height:min(820px,calc(100vh - 48px));display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--primary-low,#ddd);border-radius:12px;color:var(--primary,#222);background:var(--secondary,#fff);box-shadow:0 20px 60px #0004;font:15px/1.55 system-ui}

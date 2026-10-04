@@ -38,6 +38,10 @@ Remote custom endpoints must use HTTPS. `localhost`, `127.0.0.1`, and `[::1]` ma
 
 ## Usage
 
+**选中文字询问** in settings controls the selection-toolbar action (enabled by default). Uncheck it and save to hide the action immediately; the preference is stored locally across reloads. Ordinary search and existing conversations/history remain available.
+
+Select up to 6,000 characters within a single post body and click **询问** in Shuiyuan's native quote/copy toolbar. The action reuses native button and icon styling; no separate floating button is shown. It requires the site's selection toolbar to be available. The existing panel shows the quote and its post link; enter a question and submit to contact the LLM. Selecting text or opening the panel sends nothing. Remove the quote to return to ordinary research. Inputs, cross-post selections, and recognizable private messages are excluded. Simple explanations use the quote first; missing facts may trigger supplemental searches and up to three topic reads. Completed answers retain the quote in local history and support follow-ups. Native toolbar integration still requires a real-page manual smoke test.
+
 Enter a question and select **Start research**, or press `Ctrl/⌘ + Enter`. The script plans searches, screens and reads topics, checks evidence gaps, and generates the report. Open a citation to inspect the original topic.
 
 If a name is uncertain, describe the remembered spelling together with its brand, purpose, or category. Search expansion may explore likely aliases, but factual conclusions still require topic evidence and should retain relevant dates and conditions.
@@ -55,6 +59,8 @@ To bound latency and cost, follow-ups send a shortened report and the latest fou
 The userscript manager stores the endpoint, API key, model, topic limits, and history locally. History contains questions, search plans and hit counts, reports, source links, read excerpts that may include authors and dates, and successful follow-ups. It does not make an extra copy of the API key or provider configuration. Stored history belongs to the browser profile rather than a Shuiyuan account and persists until deleted or userscript storage is cleared.
 
 The script makes two kinds of requests:
+
+For selection questions, the selected text, topic title, and post link are sent to the configured LLM only after submission and saved with successful results. No new permissions are required; avoid selecting sensitive content.
 
 - Same-origin requests to Shuiyuan search and topic JSON endpoints, using the browser's current login session.
 - Requests to the configured LLM endpoint containing the question, search plan and hit counts, candidate titles and snippets, selected author names, dates and post excerpts, the report, and follow-ups. When configured, the API key is sent in an `Authorization: Bearer …` header.

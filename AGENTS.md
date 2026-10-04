@@ -33,6 +33,7 @@ New scripts use `standardsVersion: 1` in `scripts.json` and receive strict valid
 - When the accumulated code is ready to publish, run `npm run version:stable -- --script-id <id>`. Keep that stabilization commit limited to the generated `@version` and CHANGELOG heading changes; do not mix in behavior changes.
 - Do not invent other prerelease labels. Only stable `X.Y.Z` versions are publishable; `X.Y.Z-rc.N` versions remain on `main` for validation.
 - Run `npm run check` before completion.
+- Write CHANGELOG entries as the release's final user-facing changes relative to the previous published version, not a development log. Consolidate a feature and its pre-release refinements into one entry; list fixes separately only for issues in a previously published version.
 
 ## Definition of done
 

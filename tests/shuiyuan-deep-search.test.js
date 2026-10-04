@@ -28,8 +28,9 @@ function harness(extra = {}) {
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, `
     globalThis.api = {
       searchWithRecovery, selectRelevant, conversationContext, evidence, planQuestion, reviewGaps, makeReport, planFollowup, mountLauncher, syncLauncherStyle, state,
-      readHistory, writeHistory, saveHistory, deleteHistory, openHistory, showHistory, buildUi, render, persistSession, setRunning,
+      fillSettings, installSelectionAction, selectedPost, researchSelection, renderSelection, readHistory, writeHistory, saveHistory, deleteHistory, openHistory, showHistory, buildUi, render, persistSession, setRunning,
       configure: function (options) {
+        if (options.selectedPost) selectedPost = options.selectedPost;
         if (options.discourse) discourse = options.discourse;
         if (options.model) model = options.model;
         if (options.native) nativeSearchButton = options.native;
@@ -60,6 +61,75 @@ function memoryStorage() {
   const values = new Map();
   return { values, GM_getValue: (key, fallback) => values.has(key) ? values.get(key) : fallback, GM_setValue: (key, value) => values.set(key, value) };
 }
+
+test("selection capture requires a bounded single public post and retains its permalink", () => {
+  let privateMessage = false;
+  const article = { getAttribute: () => "7" };
+  const post = { querySelector: () => article };
+  const body = { closest: () => post, contains: (node) => node === end };
+  const start = { nodeType: 1, closest: (selector) => selector === ".topic-post .cooked" ? body : null };
+  const end = { nodeType: 1, closest: () => null };
+  const range = { startContainer: start, endContainer: end };
+  const selection = { isCollapsed: false, rangeCount: 1, getRangeAt: () => range, toString: () => "Selected passage" };
+  const api = harness({ location: { origin: "https://example.test", pathname: "/t/topic/123/7" },
+    document: { querySelector: (selector) => selector === "#topic-title h1" ? { textContent: "Topic" } : privateMessage } });
+  assert.equal(api.selectedPost(selection).url, "https://example.test/t/topic/123/7");
+  assert.equal(api.selectedPost(selection).content, "Selected passage");
+  privateMessage = true;
+  assert.equal(api.selectedPost(selection), null);
+  privateMessage = false;
+  range.endContainer = { nodeType: 1 };
+  assert.equal(api.selectedPost(selection), null);
+  range.endContainer = end;
+  selection.toString = () => "x".repeat(6001);
+  assert.equal(api.selectedPost(selection), null);
+  selection.isCollapsed = true;
+  assert.equal(api.selectedPost(selection), null);
+});
+
+test("selection answers without search when sufficient and restores its quote from history", async () => {
+  const api = historyUi(memoryStorage());
+  api.state.ui.progress.querySelector = () => null;
+  const quote = { ...historySession().documents[0], selection: true };
+  let calls = 0;
+  api.configure({ discourse: () => { throw new Error("Unexpected search"); }, model: async (_system, input) => {
+    calls += 1;
+    if (input.evidence) {
+      assert.equal(input.evidence[0].selection, true);
+      return { sufficient: true, queries: [] };
+    }
+    assert.equal(input.sources[0].selection, true);
+    return historySession().report;
+  } });
+  await api.researchSelection("Explain the passage", quote);
+  assert.equal(calls, 2);
+  assert.equal(api.readHistory().length, 1);
+  api.openHistory(api.state.session.historyId);
+  assert.equal(api.state.selection.content, quote.content);
+  assert.match(api.state.ui.selection.textContent, /正文/);
+  api.state.ui.selection.children.at(-1).events.click();
+  assert.equal(api.state.selection, null);
+});
+
+test("selection research can search for missing facts without losing the original evidence", async () => {
+  const api = historyUi(memoryStorage());
+  api.state.ui.progress.querySelector = () => null;
+  let searches = 0;
+  api.configure({ discourse: async (url) => {
+    assert.match(url, /^\/search.json/);
+    searches += 1;
+    return { topics: [], posts: [] };
+  }, model: async (_system, input) => {
+    if (input.evidence) return { sufficient: false, queries: ["additional facts"] };
+    if (input.candidates) return { topicIds: [], queries: [] };
+    assert.equal(input.sources[0].content, "正文");
+    return historySession().report;
+  } });
+  await api.researchSelection("Find related facts", { ...historySession().documents[0], selection: true });
+  assert.equal(searches, 1);
+  assert.equal(api.state.session.documents.length, 1);
+  assert.equal(api.state.session.plan.queries[0], "additional facts");
+});
 
 test("history survives reload and updates the same conversation without storing credentials", () => {
   const storage = memoryStorage();
@@ -134,6 +204,77 @@ function historyUi(storage) {
   api.buildUi();
   return api;
 }
+
+test("selection action joins the native toolbar once, remounts and opens without networking", () => {
+  let update;
+  let toolbar = null;
+  let quote = { ...historySession().documents[0], selection: true };
+  const node = (tag) => {
+    const item = new HistoryNode(tag);
+    item.style = {};
+    item.appendChild = function (child) {
+      if (child.parentElement) child.parentElement.removeChild(child);
+      child.parentElement = this;
+      this.children.push(child);
+      return child;
+    };
+    return item;
+  };
+  const api = harness({
+    window: { setTimeout() {}, getSelection: () => ({}), addEventListener() {} },
+    MutationObserver: class { constructor(callback) { update = callback; } observe() {} },
+    document: { body: node("body"), documentElement: { style: {} },
+      createElement: node, createElementNS: (_ns, tag) => node(tag), addEventListener() {},
+      querySelector: (selector) => selector === ".quote-button .buttons" ? toolbar : null },
+  });
+  api.configure({ surface: node("surface"), selectedPost: () => quote, model: () => { throw new Error("Unexpected request"); } });
+  api.installSelectionAction();
+  toolbar = node("div");
+  const native = node("button"); toolbar.appendChild(native);
+  update(); update();
+  assert.equal(toolbar.children.length, 2);
+  const action = toolbar.children[1];
+  assert.match(action.className, /btn btn-flat btn-icon-text/);
+  assert.equal(action.style.position, undefined);
+  assert.equal(action.children[1].className, "d-button-label");
+  api.state.config.selectionEnabled = false;
+  api.state.updateSelectionAction();
+  assert.equal(action.hidden, true);
+  assert.equal(action.style.display, "none");
+  action.events.click({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(api.state.ui.overlay, undefined);
+  api.state.config.selectionEnabled = true;
+  api.state.updateSelectionAction();
+  assert.equal(action.hidden, false);
+  toolbar = node("div"); update();
+  assert.equal(toolbar.children[0], action);
+  quote = null; update(); assert.equal(action.hidden, true);
+  quote = { ...historySession().documents[0], selection: true }; update();
+  action.events.click({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(api.state.selection.content, quote.content);
+  assert.equal(api.state.ui.overlay.hidden, false);
+  assert.equal(action.hidden, true);
+});
+
+test("selection setting defaults on and persists both checkbox states through settings", () => {
+  const storage = memoryStorage();
+  const api = historyUi(storage);
+  assert.equal(api.state.config.selectionEnabled, true);
+  api.fillSettings();
+  assert.equal(api.state.ui.selectionEnabled.checked, true);
+  const form = api.state.ui.settings.children.find((item) => item.tag === "form");
+  let updates = 0;
+  api.state.updateSelectionAction = () => { updates += 1; };
+  for (const enabled of [false, true]) {
+    api.state.ui.selectionEnabled.checked = enabled;
+    form.events.submit({ preventDefault() {} });
+    assert.equal(api.state.config.selectionEnabled, enabled);
+    assert.equal(harness(storage).state.config.selectionEnabled, enabled);
+    api.fillSettings();
+    assert.equal(api.state.ui.selectionEnabled.checked, enabled);
+  }
+  assert.equal(updates, 2);
+});
 
 test("history UI restores report and cited turns offline, confirms deletion and guards active work", () => {
   const storage = memoryStorage();
