@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Use SJTU Calendar as the sole course source so its holiday and makeup adjustments are preserved, ignore legacy academic timetable caches, and turn the official 2026 schedule into a non-mutating consistency check.
+
 ## 0.1.0
 
 - Initial release for aggregating SJTU courses, examinations, and calendar events into ICS and GitHub Gist feeds.

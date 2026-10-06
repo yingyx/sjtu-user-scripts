@@ -7,7 +7,6 @@ SJTU ICS Calendar Sync aggregates courses, examinations, and SJTU Calendar event
 The script runs only on:
 
 ```text
-https://i.sjtu.edu.cn/kbcx/xskbcx_cxXskbcxIndex.html*
 https://i.sjtu.edu.cn/kwgl/kscx_cxXsksxxIndex.html*
 https://calendar.sjtu.edu.cn/ui/calendar*
 ```
@@ -16,12 +15,12 @@ The calendar inside My SJTU is loaded through a `calendar.sjtu.edu.cn` iframe, s
 
 ## Features
 
-- Reads structured course, instructor, location, teaching-week, and period data and emits weekly `RRULE` recurrences with `EXDATE` exceptions.
+- Uses the course calendar maintained by SJTU Calendar as the sole course source, preserving its actual holiday, makeup-day, and temporary schedule adjustments.
 - Reads examination dates, times, locations, and formats from the examination query endpoint.
 - Reads enabled personal, meeting, course, shared, and academic calendars for a configurable date range.
-- Applies explicit days off and makeup schedules, including rules that identify a source teaching week such as `2026-10-10=第4周周二`.
-- Includes the university's published 2026 holiday and makeup schedule by default, with an option to disable it for separately governed populations.
-- Preserves collected data across supported pages and deduplicates close cross-source events, preferring SJTU Calendar records.
+- Supports explicit manual overrides such as `2026-10-02=休` or `2026-10-10=2026-10-06`, while leaving SJTU Calendar courses unchanged by default.
+- Checks the university's published 2026 holiday and makeup schedule against collected SJTU Calendar courses without rewriting them.
+- Ignores legacy academic-system timetable caches after upgrade and deduplicates collected calendar and examination events.
 - Reports overlapping timed events and marks their ICS records with `X-SJTU-CONFLICT:TRUE` without deleting either event.
 - Produces ICS with the `Asia/Shanghai` timezone, stable UIDs, and UTF-8 line folding.
 - Qualifies known campus and teaching-building abbreviations with the university name and official street address so mapping clients do not resolve names such as `下院` to unrelated places. Minhang teaching-building names are emitted as a continuous searchable POI name, for example `上海交通大学闵行校区下院 412`, with the room number kept separate.
@@ -39,16 +38,15 @@ The calendar inside My SJTU is loaded through a `calendar.sjtu.edu.cn` iframe, s
 1. Select **📅 SJTU ICS** in the lower-right corner.
 2. Open **Settings** and configure:
    - A classic GitHub personal access token with the `gist` scope. It remains in userscript storage.
-   - The Monday of the first teaching week, required to convert week numbers into dates. SJTU Calendar collection may fill it when the returned range identifies week one.
-   - The built-in 2026 university schedule, enabled by default. Disable it for Medical School campuses or other populations with separate arrangements.
-   - Optional manual rules, one per line: `YYYY-MM-DD=休`, `YYYY-MM-DD=周一`, or `YYYY-MM-DD=第3周周五`. Manual rules override calendar-derived and built-in rules.
+   - The 2026 university-schedule check, enabled by default. It reports discrepancies but never changes SJTU Calendar courses. Disable it for Medical School campuses or other populations with separate arrangements.
+   - Optional manual overrides, one per line: `YYYY-MM-DD=休` removes courses on a date, while `target-date=source-date` copies that source date's SJTU Calendar courses to the target date.
    - Optional file name, calendar name, SJTU Calendar range, and automatic-sync interval.
-3. Open the course, examination, and SJTU Calendar pages in turn and select **Collect current page**. Collection replaces only the matching source or term cache.
+3. Open the examination and SJTU Calendar pages in turn and select **Collect current page**. Ensure the **Courses** calendar is enabled in SJTU Calendar; collection replaces only the matching source cache.
 4. Select **Download ICS** for a local file, or **Publish existing data only** to create or update the Gist.
 5. **Collect and sync** performs both operations for the current page. The first successful publication displays the subscription URL.
 6. On iPhone, open **Settings → Apps → Calendar → Calendar Accounts → Add Account → Other → Add Subscribed Calendar** and paste the URL.
 
-Makeup generation requires collected course data because SJTU Calendar does not contain enough information to reconstruct another weekday's complete timetable.
+SJTU Calendar is authoritative for course dates. Built-in holiday rules only warn when a covered date appears inconsistent. They do not delete or synthesize courses.
 
 Automatic sync is disabled by default. When enabled, it runs only while a supported page is open, a token is configured, and the minimum interval has elapsed. It cannot operate after the browser is closed.
 
@@ -63,12 +61,12 @@ Automatic sync is disabled by default. When enabled, it runs only while a suppor
 | Mid-Autumn Festival | September 25–27 | None |
 | National Day | October 1–7 | September 20 follows Friday of week 3, and October 10 follows Tuesday of week 4, in the 2026–2027 autumn term |
 
-Makeup rules match the academic year, term, teaching week, and weekday stored with collected courses rather than inferring the source week from the makeup date.
+These rules are used only for consistency warnings. The exported course schedule remains exactly what SJTU Calendar returned.
 
 Common failure states:
 
 - **Login may have expired**: sign in to the corresponding SJTU page again.
-- **Enter the Monday of the first teaching week**: correct the date before collecting courses.
+- **No courses were collected**: enable the course calendar in SJTU Calendar, widen the configured date range, and collect that page again.
 - GitHub `401`/`403`: verify the token and its `gist` scope.
 - A subscription does not update immediately: calendar clients cache feeds on their own schedules.
 - Microsoft Calendar shows only all-day academic-calendar entries: install the latest `0.1.0` development build, republish the Gist, then remove and re-add the subscribed calendar so Microsoft discards the cached invalid feed.
@@ -86,11 +84,11 @@ The command uses ICAL.js to parse RFC 5545 data, expands `RRULE` while applying 
 
 ## Privacy and network requests
 
-Userscript storage contains selected course, examination, and calendar titles, times, locations, instructors, course codes, examination formats, necessary notes, source markers, adjustment rules, the GitHub token, Gist ID, settings, and last-sync time. The script does not cache or export names, student numbers, majors, classes, or other response fields unnecessary for calendar generation.
+Userscript storage contains selected course, examination, and calendar titles, times, locations, event descriptions, examination formats, necessary notes, source markers, manual overrides, the GitHub token, Gist ID, settings, and last-sync time. The script does not cache or export names, student numbers, majors, classes, or other response fields unnecessary for calendar generation.
 
 Network requests include:
 
-- Same-origin POST requests to the signed-in `i.sjtu.edu.cn` session for courses, period times, and examinations.
+- Same-origin POST requests to the signed-in `i.sjtu.edu.cn` session for examination arrangements.
 - Same-origin GET requests to the signed-in `calendar.sjtu.edu.cn` session for calendar lists and events in the configured range.
 - `GM_xmlhttpRequest` calls to `https://api.github.com` only after manual publication or explicitly enabled automatic sync. The uploaded ICS contains selected event titles, times, locations, and descriptions.
 
@@ -98,13 +96,11 @@ New Gists use `public: false`, so they are absent from public listings, but anyo
 
 ## Compatibility and limitations
 
-- Course dates depend on the correct Monday for teaching week one; update it for every term.
-- Period times come from the current campus timetable returned by the academic system.
+- Course dates and times come from SJTU Calendar, including the adjustments visible there.
 - Known campus abbreviations are expanded only when the campus can be inferred confidently. Unknown locations remain unchanged; the script does not invent building coordinates.
 - Timed ICS values always include seconds (`YYYYMMDDTHHMMSS`), including when SJTU Calendar returns only hour and minute, for compatibility with strict Microsoft Calendar importers.
-- Automatic holiday recognition is deliberately conservative. Outside the built-in schedule, only explicit day-off or makeup markers become rules.
-- The published university notice excludes populations governed by separate Medical School or continuing-education arrangements; those users must disable the built-in rules.
-- Recurrences merge only when time, location, and series identity match. Makeup occurrences remain independent.
+- The published university notice is a consistency check only and excludes populations governed by separate Medical School or continuing-education arrangements; those users should disable the check.
+- Manual date copies remain independent events; ordinary recurrences merge only when time, location, and series identity match.
 - SJTU Calendar collection is limited to the configured date range.
 - Cross-source deduplication allows at most a 15-minute start/end difference; same-source events merge only on exact times.
 - Conflict detection uses half-open intervals, so back-to-back events do not conflict. Conflicts are reported but never resolved automatically.

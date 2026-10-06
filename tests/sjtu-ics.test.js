@@ -39,7 +39,6 @@ function baseState(overrides = {}) {
   return {
     settings: {
       calendarName: "SJTU 测试日历",
-      termStart: "2026-09-14",
       adjustments: "",
       ...overrides,
     },
@@ -47,48 +46,30 @@ function baseState(overrides = {}) {
   };
 }
 
-function courseEvent(date, week, weekday = 1) {
+function calendarCourse(date, sourceId = `calendar-${date}`) {
   return {
-    source: "courses",
-    sourceId: `course-${week}-${weekday}`,
-    seriesId: `course-${weekday}`,
-    termKey: "2026:3",
-    courseWeek: week,
-    courseWeekday: weekday,
+    source: "calendar",
+    sourceId,
+    seriesId: "calendar-course",
+    calendarName: "课程",
     scheduleLike: true,
     summary: "编译原理",
     start: `${date} 10:00:00`,
     end: `${date} 11:40:00`,
     location: "闵行 下院412",
-    description: "教师：测试",
+    description: "日历：课程",
   };
 }
 
-test("sjtu-ics parses ordinary and odd/even teaching weeks", () => {
+test("sjtu-ics applies only explicit manual date overrides", () => {
   const api = loadSjtuIcs();
-  assert.deepEqual(Array.from(api.parseWeeks("1-16周")), Array.from({ length: 16 }, (_, index) => index + 1));
-  assert.deepEqual(Array.from(api.parseWeeks("2-10周(双),14-16周(双)")), [2, 4, 6, 8, 10, 14, 16]);
-});
-
-test("sjtu-ics applies explicit days off and weekday makeup rules", () => {
-  const api = loadSjtuIcs();
-  api.setState(baseState({ adjustments: "2026-09-21=休\n2026-09-26=周一" }));
-  const monday = courseEvent("2026-09-21", 2, 1);
-  const rules = api.parseManualAdjustments("2026-09-21=休\n2026-09-26=周一");
-  const adjusted = api.applyScheduleAdjustments([monday], rules);
+  const rules = api.parseManualAdjustments("2026-10-06=休\n2026-10-10=2026-10-06");
+  const adjusted = api.applyManualAdjustments([calendarCourse("2026-10-06")], rules);
   assert.equal(adjusted.length, 1);
-  assert.equal(adjusted[0].start, "2026-09-26 10:00:00");
+  assert.equal(adjusted[0].start, "2026-10-10 10:00:00");
   assert.equal(adjusted[0].forceSingle, true);
-  assert.match(adjusted[0].description, /按周一课表上课/);
-  assert.equal(api.parseSchoolAdjustment({ summary: "国庆", start: "2026-10-01 00:00:00" }), null);
-  assert.equal(api.parseSchoolAdjustment({ summary: "休", start: "2026-10-02 00:00:00" }).type, "off");
-  assert.equal(
-    api.parseSchoolAdjustment({ summary: "按周五课表上课", start: "2026-10-10 00:00:00" }).sourceWeekday,
-    5,
-  );
-  const explicitWeek = api.parseManualAdjustments("2026-10-10=第4周周二").get("2026-10-10");
-  assert.equal(explicitWeek.sourceWeek, 4);
-  assert.equal(explicitWeek.sourceWeekday, 2);
+  assert.match(adjusted[0].description, /手动调课：2026-10-10 使用 2026-10-06 课程/);
+  assert.equal(api.parseManualAdjustments("2026-10-10=第4周周二").size, 0);
 });
 
 test("sjtu-ics includes the university's published 2026 holiday and makeup schedule", () => {
@@ -109,33 +90,87 @@ test("sjtu-ics includes the university's published 2026 holiday and makeup sched
       origin: "official",
     },
   );
-  const sourceFriday = courseEvent("2026-10-02", 3, 5);
-  const adjusted = api.applyScheduleAdjustments([sourceFriday], rules);
-  assert.equal(adjusted.length, 1);
-  assert.equal(adjusted[0].start, "2026-09-20 10:00:00");
 });
 
-test("sjtu-ics deduplicates close cross-source times without merging separate sessions", () => {
+test("sjtu-ics preserves the adjusted courses supplied by SJTU Calendar", () => {
   const api = loadSjtuIcs();
-  const course = courseEvent("2026-09-14", 1);
+  const target = calendarCourse("2026-10-10");
+  api.setState(baseState({ officialAdjustments2026: true }));
+  const adjusted = api.applyManualAdjustments([target], new Map());
+  assert.deepEqual(JSON.parse(JSON.stringify(adjusted)), [target]);
+});
+
+test("sjtu-ics ignores legacy academic timetable cache entries", () => {
+  const api = loadSjtuIcs();
+  const target = calendarCourse("2026-10-10");
+  api.setState({
+    ...baseState({ officialAdjustments2026: false }),
+    sources: {
+      calendar: { type: "calendar", events: [target] },
+      "courses:2026:3": {
+        type: "courses",
+        events: [{ ...calendarCourse("2026-10-06"), source: "courses" }],
+      },
+    },
+  });
+  assert.deepEqual(
+    Array.from(api.buildCalendarModel().events, (event) => event.start),
+    ["2026-10-10 10:00:00"],
+  );
+});
+
+test("sjtu-ics audits official dates without rewriting calendar courses", () => {
+  const api = loadSjtuIcs();
+  const target = calendarCourse("2026-10-10");
+  api.setState({
+    ...baseState({ officialAdjustments2026: true }),
+    sources: {
+      calendar: {
+        type: "calendar",
+        label: "交大日历 2026-10-01 至 2026-10-10",
+        fromDate: "2026-10-01",
+        toDate: "2026-10-10",
+        events: [target],
+      },
+    },
+  });
+  const model = api.buildCalendarModel();
+  assert.equal(model.scheduleWarnings.length, 0);
+  assert.equal(model.events[0].start, "2026-10-10 10:00:00");
+
+  api.setState({
+    ...baseState({ officialAdjustments2026: true }),
+    sources: {
+      calendar: {
+        type: "calendar",
+        label: "交大日历 2026-10-01 至 2026-10-10",
+        events: [],
+      },
+    },
+  });
+  assert.match(api.buildCalendarModel().scheduleWarnings.join("\n"), /2026-10-10 未在交大日历找到调课课程/);
+});
+
+test("sjtu-ics deduplicates exact calendar copies without merging separate sessions", () => {
+  const api = loadSjtuIcs();
+  const course = calendarCourse("2026-09-14");
   const calendarCopy = {
     ...course,
-    source: "calendar",
     sourceId: "calendar-copy",
-    start: "2026-09-14 10:09:00",
-    end: "2026-09-14 11:50:00",
+    start: "2026-09-14 10:00:00",
+    end: "2026-09-14 11:40:00",
     location: "下院412",
   };
   const later = { ...course, sourceId: "later", start: "2026-09-14 14:00:00", end: "2026-09-14 15:40:00" };
   const result = api.deduplicateEvents([course, calendarCopy, later]);
   assert.equal(result.length, 2);
-  assert.equal(result[0].source, "calendar");
+  assert.equal(result[0].sourceId, course.sourceId);
   assert.equal(result[1].sourceId, "later");
 });
 
 test("sjtu-ics reports overlaps but not back-to-back events", () => {
   const api = loadSjtuIcs();
-  const first = courseEvent("2026-09-14", 1);
+  const first = calendarCourse("2026-09-14");
   const overlap = { ...first, source: "exams", sourceId: "exam", summary: "考试：编译原理", start: "2026-09-14 11:00:00", end: "2026-09-14 12:00:00" };
   const adjacent = { ...first, sourceId: "adjacent", summary: "下一节", start: "2026-09-14 11:40:00", end: "2026-09-14 12:40:00" };
   const conflicts = api.detectConflicts([first, overlap, adjacent]);
@@ -151,9 +186,9 @@ test("sjtu-ics emits weekly RRULE and EXDATE for recurring courses", () => {
   const api = loadSjtuIcs();
   api.setState(baseState());
   const events = [
-    courseEvent("2026-09-14", 1),
-    courseEvent("2026-09-21", 2),
-    courseEvent("2026-10-05", 4),
+    calendarCourse("2026-09-14", "course-1"),
+    calendarCourse("2026-09-21", "course-2"),
+    calendarCourse("2026-10-05", "course-4"),
   ];
   const compressed = api.compressRecurringEvents(events);
   assert.equal(compressed.length, 1);
@@ -170,7 +205,7 @@ test("sjtu-ics pads missing seconds for Microsoft Calendar-compatible DATE-TIME 
   const api = loadSjtuIcs();
   api.setState(baseState());
   const event = {
-    ...courseEvent("2026-09-14", 1),
+    ...calendarCourse("2026-09-14"),
     seriesId: "",
     start: "2026-09-14 10:00",
     end: "2026-09-14 11:40",
@@ -198,7 +233,7 @@ test("sjtu-ics qualifies SJTU campus locations without matching unrelated villag
   assert.equal(api.exportedLocation("下院村"), "下院村");
 
   api.setState(baseState());
-  const event = { ...courseEvent("2026-09-14", 1), seriesId: "", location: "下院412" };
+  const event = { ...calendarCourse("2026-09-14"), seriesId: "", location: "下院412" };
   const ics = api.buildIcs([event]).replace(/\r\n[ \t]/g, "");
   assert.match(ics, /LOCATION:上海交通大学闵行校区下院 412，上海市闵行区东川路800号\r\n/);
 });

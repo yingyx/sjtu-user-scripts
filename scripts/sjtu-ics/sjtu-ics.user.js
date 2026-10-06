@@ -2,13 +2,12 @@
 // @name         SJTU ICS Calendar Sync
 // @name:zh-CN   SJTU 日历同步
 // @namespace    https://github.com/yingyx/sjtu-user-scripts
-// @version      0.1.0
+// @version      0.1.1-rc.1
 // @description  Aggregate SJTU courses, exams, and calendar events into ICS and sync to GitHub Gist
 // @description:zh-CN  将 SJTU 课表、考试与交大日历聚合为 ICS，并同步到 GitHub Gist
 // @author       yingyx
 // @license      UNLICENSED
 // @supportURL   https://github.com/yingyx/sjtu-user-scripts/issues
-// @match        https://i.sjtu.edu.cn/kbcx/xskbcx_cxXskbcxIndex.html*
 // @match        https://i.sjtu.edu.cn/kwgl/kscx_cxXsksxxIndex.html*
 // @match        https://calendar.sjtu.edu.cn/ui/calendar*
 // @connect      api.github.com
@@ -22,7 +21,7 @@
   "use strict";
 
   const STORAGE_KEY = "sjtu-ics-state-v1";
-  const SOURCE_LABELS = { courses: "教务课表", exams: "考试安排", calendar: "交大日历" };
+  const SOURCE_LABELS = { exams: "考试安排", calendar: "交大日历" };
   const CAMPUS_LOCATIONS = [
     { key: "闵行", name: "上海交通大学闵行校区", address: "上海市闵行区东川路800号" },
     { key: "徐汇", name: "上海交通大学徐汇校区", address: "上海市徐汇区华山路1954号" },
@@ -49,7 +48,6 @@
       gistOwner: "",
       filename: "sjtu-calendar.ics",
       calendarName: "SJTU 聚合日历",
-      termStart: "",
       adjustments: "",
       officialAdjustments2026: true,
       daysBack: 30,
@@ -72,7 +70,9 @@
       ...structuredClone(DEFAULT_STATE),
       ...saved,
       settings: { ...DEFAULT_STATE.settings, ...(saved.settings || {}) },
-      sources: saved.sources && typeof saved.sources === "object" ? saved.sources : {},
+      sources: Object.fromEntries(Object.entries(
+        saved.sources && typeof saved.sources === "object" ? saved.sources : {},
+      ).filter(([key, source]) => !key.startsWith("courses:") && source?.type !== "courses")),
     };
   }
 
@@ -82,7 +82,6 @@
 
   function detectSource() {
     if (location.hostname === "calendar.sjtu.edu.cn") return "calendar";
-    if (location.pathname.includes("/kbcx/xskbcx_")) return "courses";
     if (location.pathname.includes("/kwgl/kscx_")) return "exams";
     return null;
   }
@@ -115,62 +114,22 @@
     return `${date} ${time}:00`;
   }
 
-  function weekdayNumber(value) {
-    const labels = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7, 天: 7 };
-    const match = String(value || "").match(/(?:周|星期)?([一二三四五六日天])/);
-    return match ? labels[match[1]] : null;
-  }
-
   function parseManualAdjustments(text) {
     const adjustments = new Map();
     for (const rawLine of String(text || "").split(/\r?\n/)) {
       const line = rawLine.trim();
       if (!line || line.startsWith("#")) continue;
-      const match = line.match(/^(\d{4}-\d{2}-\d{2})\s*[=:：]\s*(休|停课|放假|(?:第\s*(\d+)\s*周\s*)?(?:周|星期)?[一二三四五六日天])$/);
+      const match = line.match(/^(\d{4}-\d{2}-\d{2})\s*[=:：]\s*(休|停课|放假|(\d{4}-\d{2}-\d{2}))$/);
       if (!match) continue;
-      const sourceWeekday = weekdayNumber(match[2]);
       adjustments.set(match[1], {
         date: match[1],
-        type: sourceWeekday ? "makeup" : "off",
-        sourceWeekday,
-        sourceWeek: match[3] ? Number(match[3]) : null,
+        type: match[3] ? "copy" : "off",
+        sourceDate: match[3] || null,
         origin: "manual",
         label: match[2],
       });
     }
     return adjustments;
-  }
-
-  function parseSchoolAdjustment(event) {
-    const title = normalizeText(event.summary || event.title);
-    const date = eventDate(event.start);
-    if (!date || !title) return null;
-    if (title === "休" || /(?:停课|放假)/.test(title)) {
-      return { date, type: "off", sourceWeekday: null, origin: "school", label: title };
-    }
-    const detailed = title.match(/按.*?(\d{4})-(\d{4})学年(秋季|春季|夏季)学期第\s*(\d+)\s*周(?:周|星期)([一二三四五六日天]).*?课表/);
-    if (detailed) {
-      const termCodes = { 秋季: 3, 春季: 12, 夏季: 16 };
-      return {
-        date,
-        type: "makeup",
-        termKey: `${detailed[1]}:${termCodes[detailed[3]]}`,
-        sourceWeek: Number(detailed[4]),
-        sourceWeekday: weekdayNumber(detailed[5]),
-        origin: "school",
-        label: title,
-      };
-    }
-    const makeup = title.match(/(?:按|补)(?:第\s*(\d+)\s*周\s*)?(?:周|星期)([一二三四五六日天])(?:的)?(?:课表)?(?:执行|上课)?/);
-    if (!makeup) return null;
-    return {
-      date,
-      type: "makeup",
-      sourceWeek: makeup[1] ? Number(makeup[1]) : null,
-      sourceWeekday: weekdayNumber(makeup[2]),
-      origin: "school",
-      label: title,
-    };
   }
 
   function officialAdjustments2026() {
@@ -202,86 +161,6 @@
       throw new Error("登录可能已失效：服务器未返回 JSON");
     }
     return response.json();
-  }
-
-  function parseWeeks(text) {
-    const weeks = new Set();
-    const normalized = String(text || "").replace(/[，、]/g, ",");
-    const pattern = /(\d+)(?:-(\d+))?周?(?:\((单|双)\))?/g;
-    let match;
-    while ((match = pattern.exec(normalized))) {
-      const start = Number(match[1]);
-      const end = Number(match[2] || match[1]);
-      const parity = match[3];
-      for (let week = start; week <= end && week <= 30; week += 1) {
-        if (parity === "单" && week % 2 === 0) continue;
-        if (parity === "双" && week % 2 === 1) continue;
-        weeks.add(week);
-      }
-    }
-    return [...weeks].sort((a, b) => a - b);
-  }
-
-  function periodRange(periods, text) {
-    const numbers = String(text || "").match(/\d+/g)?.map(Number) || [];
-    if (!numbers.length) return null;
-    const first = periods.get(numbers[0]);
-    const last = periods.get(numbers[numbers.length - 1]);
-    return first && last ? { start: first.start, end: last.end } : null;
-  }
-
-  async function collectCourses() {
-    const xnm = document.querySelector("#xnm")?.value;
-    const xqm = document.querySelector("#xqm")?.value;
-    if (!xnm || !xqm) throw new Error("请先在教务页面选择学年和学期");
-    if (!state.settings.termStart) throw new Error("请先在插件设置中填写本学期第一周周一的日期");
-    const base = { xnm, xqm };
-    const data = await postForm("/kbcx/xskbcx_cxXsgrkb.html?gnmkdm=N2151", {
-      ...base,
-      kzlx: "ck",
-      xsdm: "",
-      kclbdm: "",
-      kclxdm: "",
-    });
-    const campus = data.kbList?.find((item) => item.xqh_id)?.xqh_id || "02";
-    const periodData = await postForm("/kbcx/xskbcx_cxRjc.html?gnmkdm=N2151", {
-      ...base,
-      xqh_id: campus,
-    });
-    const periods = new Map(
-      periodData.map((item) => [Number(item.jcmc), { start: item.qssj, end: item.jssj }]),
-    );
-    const events = [];
-    for (const course of data.kbList || []) {
-      const range = periodRange(periods, course.jcs || course.jc);
-      if (!range) continue;
-      for (const week of parseWeeks(course.zcd)) {
-        const date = addDays(state.settings.termStart, (week - 1) * 7 + Number(course.xqj || 1) - 1);
-        events.push({
-          source: "courses",
-          sourceId: `${course.jxb_id || course.kch}-${course.xqj}-${course.jcs}-${week}`,
-          seriesId: `${course.jxb_id || course.kch}-${course.xqj}-${course.jcs}-${course.cd_id || course.cdmc}`,
-          termKey: `${xnm}:${xqm}`,
-          courseWeek: week,
-          courseWeekday: Number(course.xqj || 1),
-          scheduleLike: true,
-          summary: normalizeText(course.kcmc),
-          start: toLocalDateTime(date, range.start),
-          end: toLocalDateTime(date, range.end),
-          location: normalizeText([course.xqmc, course.cdmc].filter(Boolean).join(" ")),
-          description: [
-            `教师：${normalizeText(course.xm)}`,
-            `课程代码：${normalizeText(course.kch)}`,
-            course.xkbz ? `备注：${normalizeText(course.xkbz)}` : "",
-          ].filter(Boolean).join("\n"),
-        });
-      }
-    }
-    return {
-      key: `courses:${xnm}:${xqm}`,
-      label: `${data.xsxx?.XNMC || xnm} 第${data.xsxx?.XQMMC || xqm}学期课表`,
-      events,
-    };
   }
 
   async function collectExams() {
@@ -381,26 +260,27 @@
         description: "日历：校历",
       });
     }
-    const firstWeeks = (data.schoolCalendar?.weeks || []).filter((week) => week.week === "第一周");
-    if (!state.settings.termStart && firstWeeks.length) {
-      firstWeeks.sort(
-        (a, b) => Math.abs(new Date(a.startTime) - now) - Math.abs(new Date(b.startTime) - now),
-      );
-      state.settings.termStart = firstWeeks[0].startTime.slice(0, 10);
-    }
-    return { key: "calendar", label: `交大日历 ${fromDate} 至 ${toDate}`, events };
+    return {
+      key: "calendar",
+      label: `交大日历 ${fromDate} 至 ${toDate}`,
+      fromDate,
+      toDate,
+      events,
+    };
   }
 
   async function collectCurrentSource() {
     const source = detectSource();
     if (!source) throw new Error("当前页面不是支持的数据源");
-    const collectors = { courses: collectCourses, exams: collectExams, calendar: collectCalendar };
+    const collectors = { exams: collectExams, calendar: collectCalendar };
     setStatus(`正在读取${SOURCE_LABELS[source]}…`);
     const result = await collectors[source]();
     state.sources[result.key] = {
       type: source,
       label: result.label,
       capturedAt: Date.now(),
+      fromDate: result.fromDate || "",
+      toDate: result.toDate || "",
       events: result.events,
     };
     saveState();
@@ -467,69 +347,61 @@
     return startDelta <= tolerance && endDelta <= tolerance;
   }
 
-  function deriveScheduleAdjustments(events) {
-    const adjustments = officialAdjustments2026();
-    for (const event of events) {
-      if (!event.schoolCalendar) continue;
-      const adjustment = parseSchoolAdjustment(event);
-      if (adjustment) adjustments.set(adjustment.date, adjustment);
-    }
-    for (const [date, adjustment] of parseManualAdjustments(state.settings.adjustments)) {
-      adjustments.set(date, adjustment);
-    }
-    return adjustments;
-  }
-
-  function academicWeekForDate(date) {
-    if (!state.settings.termStart) return null;
-    const start = new Date(`${state.settings.termStart}T00:00:00`);
-    const target = new Date(`${date}T00:00:00`);
-    return Math.floor((target - start) / 604800000) + 1;
-  }
-
-  function applyScheduleAdjustments(events, adjustments) {
+  function applyManualAdjustments(events, adjustments) {
     let adjusted = events.filter((event) => {
       const rule = adjustments.get(eventDate(event.start));
       return !(rule && event.scheduleLike);
     });
-    const courseEvents = events.filter((event) => event.source === "courses");
     for (const rule of adjustments.values()) {
-      if (rule.type !== "makeup") continue;
-      const targetWeek = rule.sourceWeek || academicWeekForDate(rule.date);
-      if (!targetWeek) continue;
-      let candidates = courseEvents.filter(
-        (event) => event.courseWeek === targetWeek
-          && event.courseWeekday === rule.sourceWeekday
-          && (!rule.termKey || event.termKey === rule.termKey),
-      );
-      if (!rule.termKey) {
-        const termKeys = [...new Set(candidates.map((event) => event.termKey || "legacy"))];
-        if (termKeys.length > 1) {
-          termKeys.sort((left, right) => {
-            const distance = (termKey) => Math.min(...candidates
-              .filter((event) => (event.termKey || "legacy") === termKey)
-              .map((event) => Math.abs(dateDifference(eventDate(event.start), rule.date))));
-            return distance(left) - distance(right);
-          });
-          candidates = candidates.filter((event) => (event.termKey || "legacy") === termKeys[0]);
-        }
-      }
-      const replacements = candidates
+      if (rule.type !== "copy") continue;
+      const replacements = events
+        .filter((event) => event.source === "calendar"
+          && event.scheduleLike
+          && eventDate(event.start) === rule.sourceDate)
         .map((event) => ({
           ...event,
-          sourceId: `${event.sourceId}-makeup-${rule.date}`,
+          sourceId: `${event.sourceId}-manual-copy-${rule.date}`,
           start: `${rule.date}${String(event.start).slice(10)}`,
           end: `${rule.date}${String(event.end).slice(10)}`,
           forceSingle: true,
-          description: `${event.description || ""}\n调休：${rule.date} 按周${"一二三四五六日"[rule.sourceWeekday - 1]}课表上课`.trim(),
+          description: `${event.description || ""}\n手动调课：${rule.date} 使用 ${rule.sourceDate} 课程`.trim(),
         }));
       adjusted = adjusted.concat(replacements);
     }
     return adjusted;
   }
 
+  function calendarSourceRanges() {
+    return Object.values(state.sources)
+      .filter((source) => source.type === "calendar")
+      .map((source) => {
+        if (source.fromDate && source.toDate) return [source.fromDate, source.toDate];
+        const match = String(source.label || "").match(/(\d{4}-\d{2}-\d{2})\s+至\s+(\d{4}-\d{2}-\d{2})/);
+        return match ? [match[1], match[2]] : null;
+      })
+      .filter(Boolean);
+  }
+
+  function auditOfficialSchedule(events) {
+    if (state.settings.officialAdjustments2026 === false) return [];
+    const ranges = calendarSourceRanges();
+    const courses = events.filter((event) => event.source === "calendar" && event.scheduleLike);
+    const warnings = [];
+    for (const rule of officialAdjustments2026().values()) {
+      if (!ranges.some(([fromDate, toDate]) => fromDate <= rule.date && rule.date <= toDate)) continue;
+      const matching = courses.filter((event) => eventDate(event.start) === rule.date);
+      if (rule.type === "makeup" && !matching.length) {
+        warnings.push(`${rule.date} 未在交大日历找到调课课程（${rule.label}）`);
+      }
+      if (rule.type === "off" && matching.length) {
+        warnings.push(`${rule.date} 为${rule.label}，但交大日历仍有 ${matching.length} 条课程`);
+      }
+    }
+    return warnings;
+  }
+
   function deduplicateEvents(events) {
-    const priorities = { courses: 1, exams: 2, calendar: 3 };
+    const priorities = { exams: 2, calendar: 3 };
     const ordered = [...events].sort((a, b) => (priorities[b.source] || 0) - (priorities[a.source] || 0));
     const deduplicated = [];
     for (const event of ordered) {
@@ -559,10 +431,13 @@
   }
 
   function buildCalendarModel() {
-    const rawEvents = Object.values(state.sources).flatMap((source) => source.events || []);
-    const adjustments = deriveScheduleAdjustments(rawEvents);
-    const events = deduplicateEvents(applyScheduleAdjustments(rawEvents, adjustments));
-    return { events, conflicts: detectConflicts(events), adjustments };
+    const rawEvents = Object.values(state.sources)
+      .flatMap((source) => source.events || [])
+      .filter((event) => event.source !== "courses");
+    const adjustments = parseManualAdjustments(state.settings.adjustments);
+    const events = deduplicateEvents(applyManualAdjustments(rawEvents, adjustments));
+    const scheduleWarnings = auditOfficialSchedule(rawEvents);
+    return { events, conflicts: detectConflicts(events), adjustments, scheduleWarnings };
   }
 
   function aggregateEvents() {
@@ -796,7 +671,6 @@
       gistId: normalizeText(data.get("gistId")),
       filename: normalizeText(data.get("filename")) || "sjtu-calendar.ics",
       calendarName: normalizeText(data.get("calendarName")) || "SJTU 聚合日历",
-      termStart: String(data.get("termStart") || ""),
       adjustments: String(data.get("adjustments") || ""),
       officialAdjustments2026: data.get("officialAdjustments2026") === "on",
       daysBack: Math.max(0, Number(data.get("daysBack") || 0)),
@@ -853,9 +727,8 @@
             <label>GitHub Token（需 gist 权限）<input name="token" type="password" autocomplete="off"></label>
             <label>Gist ID（留空时首次同步自动创建）<input name="gistId" type="text"></label>
             <label>ICS 文件名<input name="filename" type="text"></label><label>日历显示名称<input name="calendarName" type="text"></label>
-            <label>学期第一周周一（生成课表日期所需）<input name="termStart" type="date"></label>
-            <label class="check"><input name="officialAdjustments2026" type="checkbox">启用学校通知中的 2026 年放假调课规则</label>
-            <label>调休规则（每行“日期=休”“日期=周一”或“日期=第3周周五”）<textarea name="adjustments" placeholder="2026-10-02=休&#10;2026-10-10=第4周周二"></textarea></label>
+            <label class="check"><input name="officialAdjustments2026" type="checkbox">核对学校通知中的 2026 年放假调课安排（不改写课程）</label>
+            <label>手动覆盖（每行“日期=休”或“目标日期=源日期”）<textarea name="adjustments" placeholder="2026-10-02=休&#10;2026-10-10=2026-10-06"></textarea></label>
             <div class="inline"><label>日历回溯天数<input name="daysBack" type="number" min="0" max="730"></label><label>日历前瞻天数<input name="daysForward" type="number" min="1" max="730"></label></div>
             <label class="check"><input name="autoSync" type="checkbox">打开支持页面时自动采集并同步</label>
             <label>最短自动同步间隔（小时）<input name="intervalHours" type="number" min="1" max="168"></label>
@@ -899,9 +772,13 @@
     const root = document.querySelector("#sjtu-ics-root")?._shadow;
     if (!root) return;
     const model = buildCalendarModel();
-    const sourceCount = Object.values(state.sources).reduce((total, source) => total + (source.events?.length || 0), 0);
-    const sourceTypes = [...new Set(Object.values(state.sources).map((source) => SOURCE_LABELS[source.type]))];
-    root.querySelector("#summary").textContent = `当前来源：${SOURCE_LABELS[detectSource()] || "未知"}\n已缓存：${sourceCount} 条（调休、去重后 ${model.events.length} 条）\n调休规则：${model.adjustments.size} 条${sourceTypes.length ? `\n数据源：${sourceTypes.join("、")}` : ""}`;
+    const activeSources = Object.values(state.sources).filter((source) => source.type !== "courses");
+    const sourceCount = activeSources.reduce((total, source) => total + (source.events?.length || 0), 0);
+    const sourceTypes = [...new Set(activeSources.map((source) => SOURCE_LABELS[source.type]).filter(Boolean))];
+    const warnings = model.scheduleWarnings.length
+      ? `\n安排核对：${model.scheduleWarnings.join("；")}`
+      : "";
+    root.querySelector("#summary").textContent = `当前来源：${SOURCE_LABELS[detectSource()] || "未知"}\n已缓存：${sourceCount} 条（手动覆盖、去重后 ${model.events.length} 条）\n手动覆盖：${model.adjustments.size} 条${sourceTypes.length ? `\n数据源：${sourceTypes.join("、")}` : ""}${warnings}`;
     root.querySelector("#conflict-summary").textContent = `时间冲突：${model.conflicts.length} 组`;
     const conflictList = root.querySelector("#conflict-list");
     conflictList.textContent = "";
@@ -938,11 +815,10 @@
 
   if (globalThis.__SJTU_ICS_TEST__) {
     Object.assign(globalThis.__SJTU_ICS_TEST__, {
-      parseWeeks,
       parseManualAdjustments,
-      parseSchoolAdjustment,
       officialAdjustments2026,
-      applyScheduleAdjustments,
+      applyManualAdjustments,
+      auditOfficialSchedule,
       deduplicateEvents,
       detectConflicts,
       compressRecurringEvents,
