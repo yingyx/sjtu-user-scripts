@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 - Added selection-based questions to Discourse's native quote toolbar, with matching styling, quoted post links, optional supplemental research, persistent follow-up history, and a default-on settings toggle; no new permissions are required.
 - Made English the primary metadata and public-documentation language, with complete Simplified Chinese localization.
