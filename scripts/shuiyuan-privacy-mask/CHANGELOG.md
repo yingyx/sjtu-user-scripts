@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
 
 - Added Simplified Chinese metadata and public documentation while retaining English as the primary language.
 

@@ -2,7 +2,7 @@
 // @name         Shuiyuan Privacy Mask
 // @name:zh-CN   水源隐私遮罩
 // @namespace    https://github.com/sjtu-user-scripts/shuiyuan-privacy-mask
-// @version      0.2.1-rc.1
+// @version      0.2.1
 // @description  Mask the signed-in account identity in Shuiyuan's private account surfaces.
 // @description:zh-CN  仅隐藏水源当前账户入口及本人主页头部中的身份信息，并保留帖子作者等公开语境。
 // @license      UNLICENSED
